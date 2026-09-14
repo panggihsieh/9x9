@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>因數分解互動板</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #081018;
+      --panel: #101b26;
+      --panel-2: #142432;
+      --line: #294055;
+      --text: #f6fbff;
+      --muted: #a8bed0;
+      --blue: #50a9ff;
+      --green: #63df93;
+      --pink: #f79bdc;
+      --yellow: #ffd86a;
+      --orange: #ffb650;
+      --danger: #ff5c6c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow-x: hidden;
+      font-family: "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+      background:
+        radial-gradient(circle at 18% 12%, rgba(80, 169, 255, .18), transparent 28rem),
+        radial-gradient(circle at 86% 78%, rgba(99, 223, 147, .12), transparent 24rem),
+        linear-gradient(135deg, #070d13 0%, #0b141c 48%, #05090d 100%);
+      color: var(--text);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .app {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 34px 36px 30px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: start;
+      margin-bottom: 22px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .logo {
+      width: 94px;
+      height: 94px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+      padding: 10px;
+      border-radius: 16px;
+      background: #18324a;
+      box-shadow: 0 14px 30px rgba(0, 0, 0, .35), inset 0 0 0 2px rgba(255,255,255,.06);
+    }
+
+    .logo span {
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      font-size: 30px;
+      font-weight: 900;
+      line-height: 1;
+      text-shadow: 0 2px 0 rgba(0,0,0,.25);
+    }
+
+    .logo span:nth-child(1),
+    .logo span:nth-child(3) {
+      background: #1b91f2;
+    }
+
+    .logo span:nth-child(2) {
+      background: #48617a;
+    }
+
+    .logo span:nth-child(4) {
+      background: #ff9f37;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(42px, 4.8vw, 72px);
+      letter-spacing: 0;
+      line-height: 1;
+    }
+
+    h1 b {
+      color: var(--blue);
+    }
+
+    .subtitle {
+      margin-top: 12px;
+      color: #c8d8e5;
+      font-size: clamp(19px, 2.1vw, 28px);
+      letter-spacing: 3px;
+    }
+
+    .status-panel {
+      min-width: 440px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(14, 25, 36, .86);
+      box-shadow: 0 10px 28px rgba(0,0,0,.28);
+    }
+
+    .meter {
+      min-height: 78px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: #0d1722;
+      border: 1px solid rgba(255,255,255,.08);
+    }
+
+    .meter label {
+      display: block;
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .meter strong {
+      font-size: 30px;
+      line-height: 1;
+    }
+
+    .timer strong {
+      color: var(--yellow);
+    }
+
+    .timer.danger {
+      animation: pulseDanger .55s infinite alternate;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(540px, 1fr) minmax(520px, 690px);
+      gap: 22px;
+      align-items: start;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(10, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .number {
+      aspect-ratio: 1.28 / 1;
+      border: 0;
+      border-radius: 8px;
+      color: var(--text);
+      background: linear-gradient(180deg, #26313a, #172027);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), 0 7px 13px rgba(0,0,0,.33);
+      font-size: clamp(19px, 2vw, 28px);
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform .12s ease, background .12s ease, box-shadow .12s ease;
+    }
+
+    .number:hover,
+    .number:focus-visible {
+      transform: translateY(-2px);
+      outline: none;
+      box-shadow: inset 0 0 0 2px rgba(80,169,255,.55), 0 10px 18px rgba(0,0,0,.42);
+    }
+
+    .number.selected {
+      color: #fff;
+      background: linear-gradient(180deg, #72c0ff, #2b91ef);
+      box-shadow: 0 0 0 3px rgba(80, 169, 255, .28), 0 12px 22px rgba(38, 144, 239, .38);
+    }
+
+    .number.done {
+      color: #d4ecff;
+      background: linear-gradient(180deg, #1d364a, #122535);
+    }
+
+    .side {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(13, 22, 31, .92);
+      box-shadow: 0 18px 45px rgba(0, 0, 0, .32);
+      padding: 18px 18px 16px;
+    }
+
+    .prompt {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .target-card {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 178px;
+      height: 118px;
+      border-radius: 11px;
+      background: linear-gradient(180deg, #78c2ff, #3997f5);
+      box-shadow: inset 0 -8px 0 rgba(0,0,0,.09), 0 14px 28px rgba(45, 143, 242, .26);
+      font-size: 76px;
+      font-weight: 1000;
+    }
+
+    .speech {
+      min-height: 96px;
+      display: flex;
+      align-items: center;
+      padding: 18px 22px;
+      color: #eef7ff;
+      border: 2px solid #315784;
+      border-radius: 25px;
+      background: linear-gradient(135deg, #1c3655, #173049);
+      font-size: clamp(19px, 2vw, 25px);
+      font-weight: 800;
+      line-height: 1.45;
+    }
+
+    .section {
+      margin-top: 10px;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(22, 38, 51, .9), rgba(13, 24, 34, .9));
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 24px;
+      font-weight: 950;
+    }
+
+    .dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 18px currentColor;
+    }
+
+    .green { color: var(--green); }
+    .pink { color: var(--pink); }
+    .yellow { color: var(--yellow); }
+
+    .green .dot { background: var(--green); }
+    .pink .dot { background: var(--pink); }
+    .yellow .dot { background: var(--yellow); }
+
+    .hint {
+      color: var(--muted);
+      font-size: 16px;
+      text-align: right;
+    }
+
+    .chips,
+    .pair-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .chip,
+    .pair,
+    .tile,
+    .slot {
+      min-width: 72px;
+      height: 58px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 9px;
+      font-size: 28px;
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .chip {
+      border: 0;
+      color: #071521;
+      background: linear-gradient(180deg, #cfe5ff, #90c5ff);
+      cursor: pointer;
+      box-shadow: 0 5px 12px rgba(0,0,0,.24);
+    }
+
+    .chip.selected {
+      transform: translateY(-2px);
+      outline: 3px solid rgba(255, 216, 106, .62);
+    }
+
+    .pair {
+      min-width: 148px;
+      color: #0a2819;
+      background: linear-gradient(180deg, #dcffe6, #9ef6c0);
+    }
+
+    .equation {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      min-height: 70px;
+      font-size: clamp(30px, 3vw, 46px);
+      font-weight: 1000;
+    }
+
+    .factor-box {
+      min-width: 58px;
+      height: 58px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      color: #071521;
+      background: linear-gradient(180deg, #ffd37c, #ffb144);
+    }
+
+    .factor-box.prime {
+      background: linear-gradient(180deg, #ffc4ed, #ee8dda);
+    }
+
+    .play-area {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tile {
+      color: #071521;
+      background: linear-gradient(180deg, #ffd37c, #ffb144);
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+      box-shadow: 0 6px 13px rgba(0,0,0,.25);
+    }
+
+    .tile.prime {
+      background: linear-gradient(180deg, #ffc4ed, #ee8dda);
+    }
+
+    .tile.used {
+      opacity: .32;
+      cursor: default;
+    }
+
+    .tile.selected {
+      transform: translateY(-2px);
+      outline: 3px solid rgba(255, 216, 106, .7);
+    }
+
+    .slot {
+      color: #b9d4eb;
+      background: #0c1621;
+      border: 2px dashed #8aa7c4;
+    }
+
+    .slot.filled {
+      color: #071521;
+      border-style: solid;
+      border-color: transparent;
+      background: linear-gradient(180deg, #d9edff, #97c9ff);
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .primary,
+    .secondary {
+      min-height: 68px;
+      border-radius: 999px;
+      border: 0;
+      color: #fff;
+      font-size: 26px;
+      font-weight: 950;
+      cursor: pointer;
+      box-shadow: 0 11px 22px rgba(0,0,0,.28);
+    }
+
+    .primary {
+      background: linear-gradient(180deg, #46b8ff, #1679f1);
+    }
+
+    .secondary {
+      background: linear-gradient(180deg, #263849, #172534);
+      border: 1px solid #35516c;
+    }
+
+    .feedback {
+      grid-column: 1 / -1;
+      min-height: 28px;
+      color: #cbe0ef;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .feedback.good {
+      color: var(--green);
+    }
+
+    .feedback.bad {
+      color: var(--danger);
+    }
+
+    .flash {
+      animation: flash .38s ease;
+    }
+
+    .shake {
+      animation: shake .28s ease;
+    }
+
+    footer {
+      display: grid;
+      grid-template-columns: 1fr minmax(280px, 60%) 1fr;
+      align-items: center;
+      gap: 22px;
+      margin-top: 26px;
+      color: #7e98ad;
+      font-size: 18px;
+    }
+
+    footer::before,
+    footer::after {
+      content: "";
+      height: 1px;
+      background: #2a3e50;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 20px;
+      background: rgba(2, 7, 11, .72);
+      z-index: 5;
+    }
+
+    .modal.open {
+      display: grid;
+    }
+
+    .dialog {
+      width: min(520px, 100%);
+      padding: 30px;
+      border-radius: 18px;
+      border: 1px solid #31506c;
+      background: #0f1c28;
+      box-shadow: 0 30px 90px rgba(0,0,0,.55);
+      text-align: center;
+    }
+
+    .dialog h2 {
+      margin: 0 0 12px;
+      font-size: 42px;
+    }
+
+    .dialog p {
+      color: #c7d8e7;
+      font-size: 20px;
+      line-height: 1.6;
+    }
+
+    @keyframes pulseDanger {
+      from { box-shadow: inset 0 0 0 1px rgba(255,92,108,.26); }
+      to { box-shadow: inset 0 0 0 2px rgba(255,92,108,.82), 0 0 20px rgba(255,92,108,.35); }
+    }
+
+    @keyframes flash {
+      0% { filter: brightness(1); }
+      50% { filter: brightness(1.48); }
+      100% { filter: brightness(1); }
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-7px); }
+      75% { transform: translateX(7px); }
+    }
+
+    @media (max-width: 1120px) {
+      header,
+      main {
+        grid-template-columns: 1fr;
+      }
+
+      .status-panel {
+        min-width: 0;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .app {
+        padding: 18px 14px 22px;
+      }
+
+      .brand {
+        align-items: flex-start;
+      }
+
+      .logo {
+        width: 62px;
+        height: 62px;
+        border-radius: 12px;
+        padding: 7px;
+      }
+
+      .logo span {
+        font-size: 20px;
+      }
+
+      .subtitle {
+        letter-spacing: 1px;
+      }
+
+      .status-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .board {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .number {
+        font-size: 20px;
+      }
+
+      .prompt {
+        grid-template-columns: 1fr;
+      }
+
+      .target-card {
+        width: 100%;
+        height: 102px;
+      }
+
+      .section-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .hint {
+        text-align: left;
+      }
+
+      .controls {
+        grid-template-columns: 1fr;
+      }
+
+      footer {
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
+
+      footer::before,
+      footer::after {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <span>×</span><span>÷</span><span>+</span><span>−</span>
+        </div>
+        <div>
+          <h1>因數分解 <b>互動板</b></h1>
+          <div class="subtitle">點選因字，限時找出因數與質因數分解。</div>
+        </div>
+      </div>
+      <div class="status-panel" aria-live="polite">
+        <div class="meter timer" id="timerBox">
+          <label>剩餘時間</label>
+          <strong><span id="time">60</span>s</strong>
+        </div>
+        <div class="meter">
+          <label>分數</label>
+          <strong id="score">0</strong>
+        </div>
+        <div class="meter">
+          <label>連擊</label>
+          <strong><span id="streak">0</span>x</strong>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="board" id="board" aria-label="1 到 100 數字板"></section>
+
+      <aside class="side">
+        <div class="prompt">
+          <div class="target-card" id="target">24</div>
+          <div class="speech" id="speech">一起找出 24 的因數與質因數分解吧！</div>
+        </div>
+
+        <section class="section" id="factorSection">
+          <div class="section-head">
+            <div class="title"><span class="dot"></span>因數</div>
+            <div class="hint" id="factorHint">24 可以整除哪些數呢？</div>
+          </div>
+          <div class="chips" id="factorChips"></div>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div class="title green"><span class="dot"></span>因數配對</div>
+            <div class="hint">配對的因數相乘會得到目標數！</div>
+          </div>
+          <div class="pair-list" id="pairList"></div>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div class="title pink"><span class="dot"></span>質因數分解</div>
+            <div class="hint">把數字寫成質數的乘積。</div>
+          </div>
+          <div class="equation" id="equation"></div>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div class="title yellow"><span class="dot"></span>試一試</div>
+            <div class="hint">拖動下面的質數，放到正確的位置！</div>
+          </div>
+          <div class="play-area" id="playArea"></div>
+        </section>
+
+        <div class="controls">
+          <button class="primary" id="newRound">↻ 再選一個數字</button>
+          <button class="secondary" id="startGame">▶ 開始挑戰</button>
+          <div class="feedback" id="feedback">按下開始後，答對越快加分越高。</div>
+        </div>
+      </aside>
+    </main>
+
+    <footer>
+      <span>數學，讓世界更有規律！</span>
+    </footer>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="dialog">
+      <h2 id="modalTitle">時間到！</h2>
+      <p id="modalText"></p>
+      <button class="primary" id="restart">再挑戰一次</button>
+    </div>
+  </div>
+
+  <script>
+    const board = document.querySelector("#board");
+    const targetEl = document.querySelector("#target");
+    const speech = document.querySelector("#speech");
+    const factorChips = document.querySelector("#factorChips");
+    const pairList = document.querySelector("#pairList");
+    const equation = document.querySelector("#equation");
+    const playArea = document.querySelector("#playArea");
+    const feedback = document.querySelector("#feedback");
+    const scoreEl = document.querySelector("#score");
+    const streakEl = document.querySelector("#streak");
+    const timeEl = document.querySelector("#time");
+    const timerBox = document.querySelector("#timerBox");
+    const modal = document.querySelector("#modal");
+    const modalText = document.querySelector("#modalText");
+
+    const state = {
+      current: 24,
+      selectedFactors: new Set(),
+      score: 0,
+      streak: 0,
+      time: 60,
+      active: false,
+      timer: null,
+      maxStreak: 0,
+      factorBonusAwarded: false,
+      slotValues: [],
+      draggedPrime: null,
+      selectedTile: null
+    };
+
+    function factorsOf(n) {
+      const result = [];
+      for (let i = 1; i <= n; i += 1) {
+        if (n % i === 0) result.push(i);
+      }
+      return result;
+    }
+
+    function factorPairs(n) {
+      const pairs = [];
+      for (let i = 1; i <= Math.sqrt(n); i += 1) {
+        if (n % i === 0) pairs.push([i, n / i]);
+      }
+      return pairs;
+    }
+
+    function primeFactorsOf(n) {
+      const result = [];
+      let value = n;
+      let divisor = 2;
+      while (value > 1) {
+        while (value % divisor === 0) {
+          result.push(divisor);
+          value /= divisor;
+        }
+        divisor += divisor === 2 ? 1 : 2;
+      }
+      return result.length ? result : [n];
+    }
+
+    function shuffle(values) {
+      return [...values].sort(() => Math.random() - .5);
+    }
+
+    function chooseNumber() {
+      const richNumbers = Array.from({ length: 99 }, (_, i) => i + 2)
+        .filter((n) => primeFactorsOf(n).length >= 2);
+      return richNumbers[Math.floor(Math.random() * richNumbers.length)];
+    }
+
+    function renderBoard() {
+      board.innerHTML = "";
+      for (let i = 1; i <= 100; i += 1) {
+        const button = document.createElement("button");
+        button.className = "number";
+        button.type = "button";
+        button.textContent = i;
+        button.addEventListener("click", () => setNumber(i));
+        board.append(button);
+      }
+    }
+
+    function updateSelectedButton() {
+      document.querySelectorAll(".number").forEach((button) => {
+        const value = Number(button.textContent);
+        button.classList.toggle("selected", value === state.current);
+      });
+    }
+
+    function setNumber(n) {
+      state.current = n;
+      state.selectedFactors.clear();
+      state.slotValues = [];
+      state.factorBonusAwarded = false;
+      targetEl.textContent = n;
+      speech.textContent = `一起找出 ${n} 的因數與質因數分解吧！`;
+      renderChallenge();
+      updateSelectedButton();
+      showFeedback("先點出所有因數，再完成下面的拖放挑戰。", "");
+    }
+
+    function renderChallenge() {
+      const factors = factorsOf(state.current);
+      const pairs = factorPairs(state.current);
+      const primes = primeFactorsOf(state.current);
+
+      factorChips.innerHTML = "";
+      factors.forEach((factor) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "chip";
+        chip.textContent = factor;
+        chip.addEventListener("click", () => toggleFactor(chip, factor, factors.length));
+        factorChips.append(chip);
+      });
+
+      pairList.innerHTML = "";
+      pairs.forEach(([a, b]) => {
+        const pair = document.createElement("div");
+        pair.className = "pair";
+        pair.textContent = `${a} × ${b}`;
+        pairList.append(pair);
+      });
+
+      equation.innerHTML = "";
+      equation.append(document.createTextNode(`${state.current} = `));
+      primes.forEach((prime, index) => {
+        const box = document.createElement("span");
+        box.className = `factor-box ${prime > 2 ? "prime" : ""}`;
+        box.textContent = prime;
+        equation.append(box);
+        if (index < primes.length - 1) equation.append(document.createTextNode(" × "));
+      });
+
+      renderDragGame(primes);
+    }
+
+    function toggleFactor(chip, factor, count) {
+      if (state.selectedFactors.has(factor)) {
+        state.selectedFactors.delete(factor);
+        chip.classList.remove("selected");
+      } else {
+        state.selectedFactors.add(factor);
+        chip.classList.add("selected");
+      }
+
+      if (state.selectedFactors.size === count && !state.factorBonusAwarded) {
+        state.factorBonusAwarded = true;
+        addScore(5);
+        showFeedback("因數全找到了！現在完成質因數拖放。", "good");
+      }
+    }
+
+    function renderDragGame(primes) {
+      playArea.innerHTML = "";
+      const shuffled = shuffle(primes.map((value, index) => ({ value, index })));
+      shuffled.forEach(({ value, index }) => {
+        const tile = document.createElement("div");
+        tile.className = `tile ${value > 2 ? "prime" : ""}`;
+        tile.textContent = value;
+        tile.draggable = true;
+        tile.dataset.value = value;
+        tile.dataset.index = index;
+        tile.addEventListener("dragstart", () => state.draggedPrime = tile);
+        tile.addEventListener("click", () => selectTile(tile));
+        playArea.append(tile);
+      });
+
+      const equals = document.createElement("strong");
+      equals.textContent = "=";
+      equals.style.fontSize = "30px";
+      playArea.append(equals);
+
+      primes.forEach((prime, index) => {
+        const slot = document.createElement("div");
+        slot.className = "slot";
+        slot.textContent = "";
+        slot.dataset.answer = prime;
+        slot.dataset.slot = index;
+        slot.addEventListener("dragover", (event) => event.preventDefault());
+        slot.addEventListener("drop", (event) => {
+          event.preventDefault();
+          fillSlot(slot);
+        });
+        slot.addEventListener("click", () => fillSlot(slot));
+        playArea.append(slot);
+        if (index < primes.length - 1) {
+          const multiply = document.createElement("strong");
+          multiply.textContent = "×";
+          multiply.style.fontSize = "30px";
+          playArea.append(multiply);
+        }
+      });
+    }
+
+    function selectTile(tile) {
+      if (tile.classList.contains("used")) return;
+      document.querySelectorAll(".tile.selected").forEach((item) => item.classList.remove("selected"));
+      state.selectedTile = tile;
+      state.draggedPrime = tile;
+      tile.classList.add("selected");
+      showFeedback("選好了，點一個空格放進去。", "");
+    }
+
+    function fillSlot(slot) {
+      const tile = state.draggedPrime || state.selectedTile;
+      if (!tile || tile.classList.contains("used") || slot.classList.contains("filled")) return;
+      const value = Number(tile.dataset.value);
+      const answer = Number(slot.dataset.answer);
+      if (value === answer) {
+        slot.textContent = value;
+        slot.classList.add("filled");
+        tile.classList.add("used");
+        tile.classList.remove("selected");
+        tile.draggable = false;
+        state.selectedTile = null;
+        state.draggedPrime = null;
+        state.slotValues.push(value);
+        addScore(8);
+        showFeedback("正確！速度保持住。", "good");
+        if (document.querySelectorAll(".slot.filled").length === document.querySelectorAll(".slot").length) {
+          completeRound();
+        }
+      } else {
+        state.streak = 0;
+        updateHud();
+        playArea.classList.remove("shake");
+        void playArea.offsetWidth;
+        playArea.classList.add("shake");
+        showFeedback("位置不對，想想質因數從小到大怎麼排。", "bad");
+      }
+    }
+
+    function completeRound() {
+      state.streak += 1;
+      state.maxStreak = Math.max(state.maxStreak, state.streak);
+      const speedBonus = Math.max(2, Math.ceil(state.time / 6));
+      addScore(20 + speedBonus + state.streak * 3);
+      targetEl.classList.remove("flash");
+      void targetEl.offsetWidth;
+      targetEl.classList.add("flash");
+      showFeedback(`完成！連擊 ${state.streak}，時間獎勵 +${speedBonus}。`, "good");
+      setTimeout(() => setNumber(chooseNumber()), 750);
+    }
+
+    function addScore(points) {
+      if (!state.active) return;
+      state.score += points;
+      updateHud();
+    }
+
+    function updateHud() {
+      scoreEl.textContent = state.score;
+      streakEl.textContent = state.streak;
+      timeEl.textContent = state.time;
+      timerBox.classList.toggle("danger", state.time <= 10 && state.active);
+    }
+
+    function showFeedback(message, type) {
+      feedback.textContent = message;
+      feedback.className = `feedback ${type}`;
+    }
+
+    function startGame() {
+      state.score = 0;
+      state.streak = 0;
+      state.maxStreak = 0;
+      state.time = 60;
+      state.active = true;
+      modal.classList.remove("open");
+      clearInterval(state.timer);
+      updateHud();
+      setNumber(chooseNumber());
+      showFeedback("挑戰開始！每秒都算數。", "good");
+      state.timer = setInterval(() => {
+        state.time -= 1;
+        updateHud();
+        if (state.time <= 0) endGame();
+      }, 1000);
+    }
+
+    function endGame() {
+      state.active = false;
+      clearInterval(state.timer);
+      updateHud();
+      modalText.textContent = `你的分數是 ${state.score} 分，最高連擊 ${state.maxStreak}。再來一局，把反應練得更快！`;
+      modal.classList.add("open");
+      showFeedback("時間到！按再挑戰一次重新開始。", "bad");
+    }
+
+    document.querySelector("#newRound").addEventListener("click", () => setNumber(chooseNumber()));
+    document.querySelector("#startGame").addEventListener("click", startGame);
+    document.querySelector("#restart").addEventListener("click", startGame);
+
+    renderBoard();
+    setNumber(24);
+    updateHud();
+  </script>
+</body>
+</html>
