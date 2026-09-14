@@ -388,7 +388,7 @@
 
     .task-actions {
       display: grid;
-      grid-template-columns: 1fr auto auto;
+      grid-template-columns: 1fr auto auto auto auto;
       gap: 10px;
       align-items: center;
       margin-top: 10px;
@@ -405,7 +405,8 @@
     .task-note.bad { color: var(--danger); }
 
     .confirm,
-    .clear {
+    .clear,
+    .task-start {
       min-height: 42px;
       padding: 0 16px;
       border-radius: 999px;
@@ -422,9 +423,31 @@
       background: #152638;
     }
 
+    .task-start {
+      color: #071521;
+      background: linear-gradient(180deg, #fff4a7, #ffd15d);
+    }
+
+    .task-timer {
+      min-height: 42px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0 14px;
+      border-radius: 999px;
+      color: #071521;
+      background: linear-gradient(180deg, #dff0ff, #9dd0ff);
+      font-weight: 1000;
+    }
+
+    .task-timer.danger {
+      color: #fff;
+      background: linear-gradient(180deg, #ff7885, #d91d39);
+      animation: pulseDanger .55s infinite alternate;
+    }
+
     .controls {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 12px;
       margin-top: 18px;
     }
@@ -704,6 +727,7 @@
         <div class="controls">
           <button class="primary" id="newRound">↻ 再選一個數字</button>
           <button class="secondary" id="startGame">▶ 開始測驗</button>
+          <button class="secondary" id="muteToggle">🔊 音效開</button>
           <div class="feedback" id="feedback">教學示範模式會直接顯示答案；切到遊戲測驗後，用左邊數字板作答。</div>
         </div>
       </aside>
@@ -738,6 +762,7 @@
     const modalText = document.querySelector("#modalText");
     const demoModeButton = document.querySelector("#demoMode");
     const quizModeButton = document.querySelector("#quizMode");
+    const muteToggle = document.querySelector("#muteToggle");
     const contentEls = {
       factors: document.querySelector("#factorContent"),
       pairs: document.querySelector("#pairContent"),
@@ -764,6 +789,11 @@
       locked: false,
       audio: null,
       tickTone: 0,
+      muted: false,
+      runningTask: null,
+      taskTimer: null,
+      taskLimit: 35,
+      taskTimes: { factors: 35, pairs: 35, primes: 35 },
       activeTask: "factors",
       draggedValue: null,
       quiz: {
@@ -867,6 +897,9 @@
       state.activeTask = "factors";
       state.locked = false;
       state.roundTime = state.roundLimit;
+      stopTaskTimer();
+      state.runningTask = null;
+      state.taskTimes = { factors: state.taskLimit, pairs: state.taskLimit, primes: state.taskLimit };
       state.quiz = {
         factors: [],
         pairs: [],
@@ -882,6 +915,7 @@
         state.active = false;
         state.locked = false;
         clearInterval(state.timer);
+        stopTaskTimer();
       }
       state.mode = mode;
       demoModeButton.classList.toggle("active", mode === "demo");
@@ -988,6 +1022,17 @@
       note.id = `${task}Note`;
       note.textContent = state.quiz.wrong[task] ? `錯誤 ${state.quiz.wrong[task]} / 3 次` : "作答後按確認。";
 
+      const start = document.createElement("button");
+      start.className = "task-start";
+      start.type = "button";
+      start.textContent = state.runningTask === task ? "倒數中" : "開始本題";
+      start.disabled = state.quiz.solved[task];
+      start.addEventListener("click", () => startTask(task));
+
+      const taskTimer = document.createElement("div");
+      taskTimer.className = `task-timer ${state.taskTimes[task] <= 8 && state.runningTask === task ? "danger" : ""}`;
+      taskTimer.textContent = `${state.taskTimes[task]}s`;
+
       const clear = document.createElement("button");
       clear.className = "clear";
       clear.type = "button";
@@ -998,9 +1043,10 @@
       confirm.className = "confirm";
       confirm.type = "button";
       confirm.textContent = "確認";
+      confirm.disabled = state.runningTask !== task || state.quiz.solved[task];
       confirm.addEventListener("click", () => checkTask(task));
 
-      actionEls[task].append(note, clear, confirm);
+      actionEls[task].append(note, start, taskTimer, clear, confirm);
     }
 
     function createChip(value) {
@@ -1055,6 +1101,12 @@
         showFeedback("這題已暫停作答，準備進入下一題。", "bad");
         return;
       }
+      if (state.runningTask !== task) {
+        setActiveTask(task);
+        showTaskNote(task, "請先按「開始本題」再作答。", "bad");
+        showFeedback("每個小題要分開開始，倒數與滴答聲才會啟動。", "bad");
+        return;
+      }
       setActiveTask(task);
       if (state.quiz.solved[task]) {
         showTaskNote(task, "這一題已答對，可以挑戰其他區。", "good");
@@ -1097,9 +1149,16 @@
 
     function checkTask(task) {
       if (state.locked) return;
+      if (state.runningTask !== task) {
+        setActiveTask(task);
+        showTaskNote(task, "請先按「開始本題」再確認。", "bad");
+        showFeedback("每個小題都有自己的倒數，先開始該小題。", "bad");
+        return;
+      }
       const correct = isTaskCorrect(task);
       if (correct) {
         state.quiz.solved[task] = true;
+        stopTaskTimer();
         state.streak += 1;
         state.maxStreak = Math.max(state.maxStreak, state.streak);
         addScore(task === "pairs" ? 18 : 14);
@@ -1118,6 +1177,7 @@
       if (state.quiz.wrong[task] >= 3) {
         revealAnswer(task);
         state.quiz.solved[task] = true;
+        stopTaskTimer();
         adjustTime(-5, "錯三次 -5 秒");
         showTaskNote(task, "錯三次，已顯示正確答案。", "bad");
         showFeedback(`${taskName(task)}已揭曉答案，時間再 -5 秒。`, "bad");
@@ -1181,43 +1241,76 @@
       updateHud();
     }
 
-    function adjustTime(delta, reason) {
-      if (!state.active) return;
-      state.time = Math.max(0, Math.min(120, state.time + delta));
-      if (delta > 0) state.roundTime = Math.min(state.roundLimit, state.roundTime + delta);
-      if (delta < 0) state.roundTime = Math.max(0, state.roundTime + delta);
-      updateHud();
-      if (state.time <= 0) endGame();
+    function totalTimeRemaining() {
+      return Object.values(state.taskTimes).reduce((sum, value) => sum + value, 0);
     }
 
-    function handleRoundTimeout() {
-      if (!state.active || state.locked) return;
-      state.locked = true;
-      state.streak = 0;
-      state.quiz.factors = factorsOf(state.current);
-      state.quiz.pairs = factorPairs(state.current);
-      state.quiz.pairDraft = [];
-      state.quiz.primes = primeFactorsOf(state.current);
-      state.quiz.solved = { factors: true, pairs: true, primes: true };
-      renderQuiz();
-      ["factors", "pairs", "primes"].forEach((task) => {
-        showTaskNote(task, "本題逾時，已顯示正確答案。", "bad");
-      });
+    function startTask(task) {
+      if (state.mode !== "quiz") setMode("quiz");
+      if (state.quiz.solved[task]) {
+        showTaskNote(task, "這個小題已完成。", "good");
+        return;
+      }
+      state.active = true;
+      state.locked = false;
+      setActiveTask(task);
+      stopTaskTimer();
+      state.runningTask = task;
+      state.roundTime = state.taskTimes[task];
+      if (!state.muted) ensureAudio();
+      showTaskNote(task, "倒數開始！", "good");
+      showFeedback(`${taskName(task)}開始倒數，完成後按確認。`, "good");
+      renderTaskActions("factors");
+      renderTaskActions("pairs");
+      renderTaskActions("primes");
+      state.taskTimer = setInterval(() => {
+        state.taskTimes[task] -= 1;
+        state.roundTime = state.taskTimes[task];
+        state.time = totalTimeRemaining();
+        playTick();
+        updateHud();
+        renderTaskActions(task);
+        if (state.taskTimes[task] <= 0) handleRoundTimeout(task);
+      }, 1000);
+    }
+
+    function stopTaskTimer() {
+      clearInterval(state.taskTimer);
+      state.taskTimer = null;
+      state.runningTask = null;
+    }
+
+    function adjustTime(delta, reason) {
+      if (!state.active) return;
+      const task = state.runningTask || state.activeTask;
+      state.taskTimes[task] = Math.max(0, Math.min(state.taskLimit, state.taskTimes[task] + delta));
+      state.roundTime = state.taskTimes[task];
+      state.time = totalTimeRemaining();
       updateHud();
-      showFeedback("本題時間到！答案已揭曉，準備下一題。", "bad");
-      setTimeout(() => {
-        if (state.active) setNumber(chooseNumber());
-      }, 1400);
+      if (state.taskTimes[task] <= 0 && state.runningTask === task) handleRoundTimeout(task);
+    }
+
+    function handleRoundTimeout(task = state.runningTask || state.activeTask) {
+      if (!state.active || state.locked) return;
+      stopTaskTimer();
+      state.streak = 0;
+      revealAnswer(task);
+      state.quiz.solved[task] = true;
+      updateHud();
+      showTaskNote(task, "小題時間到，已顯示正確答案。", "bad");
+      showFeedback(`${taskName(task)}時間到！請開始下一個小題。`, "bad");
+      if (Object.values(state.quiz.solved).every(Boolean)) completeQuizRound();
     }
 
     function updateHud() {
       scoreEl.textContent = state.score;
       streakEl.textContent = state.streak;
+      state.time = totalTimeRemaining();
       timeEl.textContent = state.time;
-      roundTimeEl.textContent = state.roundTime;
+      roundTimeEl.textContent = state.runningTask ? state.taskTimes[state.runningTask] : state.taskTimes[state.activeTask];
       roundCountEl.textContent = state.roundCount;
       timerBox.classList.toggle("danger", state.time <= 10 && state.active);
-      roundTimerBox.classList.toggle("danger", state.roundTime <= 8 && state.active);
+      roundTimerBox.classList.toggle("danger", state.runningTask && state.taskTimes[state.runningTask] <= 8 && state.active);
     }
 
     function showFeedback(message, type) {
@@ -1234,6 +1327,7 @@
     }
 
     function playTone(frequency, duration = .08, gainValue = .08, type = "sine") {
+      if (state.muted) return;
       const audio = ensureAudio();
       if (!audio) return;
       if (audio.state === "suspended") audio.resume();
@@ -1250,7 +1344,8 @@
     }
 
     function playTick() {
-      const urgent = state.time <= 10 || state.roundTime <= 8;
+      if (!state.runningTask) return;
+      const urgent = state.taskTimes[state.runningTask] <= 8;
       state.tickTone = 1 - state.tickTone;
       playTone(urgent ? 1040 : state.tickTone ? 720 : 560, urgent ? .07 : .045, urgent ? .12 : .055, "square");
     }
@@ -1291,30 +1386,29 @@
       setTimeout(() => burst.remove(), 1300);
     }
 
+    function toggleMute() {
+      state.muted = !state.muted;
+      muteToggle.textContent = state.muted ? "🔇 靜音" : "🔊 音效開";
+      showFeedback(state.muted ? "已切換為靜音模式。" : "音效已開啟。", "");
+    }
+
     function startGame() {
-      ensureAudio();
       setMode("quiz");
       state.score = 0;
       state.streak = 0;
       state.maxStreak = 0;
-      state.time = 60;
-      state.roundTime = state.roundLimit;
+      state.taskTimes = { factors: state.taskLimit, pairs: state.taskLimit, primes: state.taskLimit };
+      state.time = totalTimeRemaining();
+      state.roundTime = state.taskLimit;
       state.roundCount = 0;
       state.locked = false;
       state.active = true;
       modal.classList.remove("open");
       clearInterval(state.timer);
+      stopTaskTimer();
       setNumber(chooseNumber());
       updateHud();
-      showFeedback("測驗開始！三區都要按確認，連續三次錯誤會揭曉答案。", "good");
-      state.timer = setInterval(() => {
-        state.time -= 1;
-        if (!state.locked) state.roundTime -= 1;
-        playTick();
-        updateHud();
-        if (state.time <= 0) endGame();
-        else if (state.roundTime <= 0) handleRoundTimeout();
-      }, 1000);
+      showFeedback("測驗開始！請在每個小題按「開始本題」，倒數與滴答聲會分開啟動。", "good");
     }
 
     function endGame() {
@@ -1329,6 +1423,7 @@
     document.querySelector("#newRound").addEventListener("click", () => setNumber(chooseNumber()));
     document.querySelector("#startGame").addEventListener("click", startGame);
     document.querySelector("#restart").addEventListener("click", startGame);
+    muteToggle.addEventListener("click", toggleMute);
     demoModeButton.addEventListener("click", () => setMode("demo"));
     quizModeButton.addEventListener("click", () => setMode("quiz"));
 
