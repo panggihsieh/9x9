@@ -463,6 +463,40 @@
     .flash { animation: flash .38s ease; }
     .shake { animation: shake .28s ease; }
 
+    .cheer-burst {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 10;
+    }
+
+    .cheer-word {
+      position: absolute;
+      left: 50%;
+      top: 22%;
+      transform: translate(-50%, -50%);
+      padding: 14px 28px;
+      border-radius: 999px;
+      color: #06131f;
+      background: linear-gradient(180deg, #fff6b7, #ffd86a);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, .35), 0 0 0 5px rgba(255, 255, 255, .18);
+      font-size: clamp(32px, 5vw, 68px);
+      font-weight: 1000;
+      animation: cheerPop .95s ease forwards;
+    }
+
+    .confetti {
+      position: absolute;
+      left: 50%;
+      top: 28%;
+      width: 12px;
+      height: 20px;
+      border-radius: 3px;
+      background: var(--blue);
+      animation: confettiFly 1.05s ease-out forwards;
+    }
+
     footer {
       display: grid;
       grid-template-columns: 1fr minmax(280px, 60%) 1fr;
@@ -528,6 +562,24 @@
       0%, 100% { transform: translateX(0); }
       25% { transform: translateX(-7px); }
       75% { transform: translateX(7px); }
+    }
+
+    @keyframes cheerPop {
+      0% { opacity: 0; transform: translate(-50%, -50%) scale(.6); }
+      18% { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
+      70% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -82%) scale(.96); }
+    }
+
+    @keyframes confettiFly {
+      0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) rotate(0deg) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(calc(-50% + var(--dx)), var(--dy)) rotate(var(--rot)) scale(.8);
+      }
     }
 
     @media (max-width: 1120px) {
@@ -710,6 +762,8 @@
       active: false,
       timer: null,
       locked: false,
+      audio: null,
+      tickTone: 0,
       activeTask: "factors",
       draggedValue: null,
       quiz: {
@@ -1050,6 +1104,7 @@
         state.maxStreak = Math.max(state.maxStreak, state.streak);
         addScore(task === "pairs" ? 18 : 14);
         adjustTime(2, "答對 +2 秒");
+        launchCheer(Object.values(state.quiz.solved).every(Boolean) ? "過關！" : "答對了！");
         showTaskNote(task, "正確！", "good");
         showFeedback(`${taskName(task)}答對了，時間 +2 秒，繼續完成其他區。`, "good");
         if (Object.values(state.quiz.solved).every(Boolean)) completeQuizRound();
@@ -1170,7 +1225,74 @@
       feedback.className = `feedback ${type}`;
     }
 
+    function ensureAudio() {
+      if (state.audio) return state.audio;
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return null;
+      state.audio = new AudioContext();
+      return state.audio;
+    }
+
+    function playTone(frequency, duration = .08, gainValue = .08, type = "sine") {
+      const audio = ensureAudio();
+      if (!audio) return;
+      if (audio.state === "suspended") audio.resume();
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      oscillator.type = type;
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, audio.currentTime);
+      gain.gain.exponentialRampToValueAtTime(gainValue, audio.currentTime + .01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + duration);
+      oscillator.connect(gain).connect(audio.destination);
+      oscillator.start();
+      oscillator.stop(audio.currentTime + duration + .02);
+    }
+
+    function playTick() {
+      const urgent = state.time <= 10 || state.roundTime <= 8;
+      state.tickTone = 1 - state.tickTone;
+      playTone(urgent ? 1040 : state.tickTone ? 720 : 560, urgent ? .07 : .045, urgent ? .12 : .055, "square");
+    }
+
+    function playCheerSound() {
+      playTone(660, .08, .09, "triangle");
+      setTimeout(() => playTone(880, .09, .1, "triangle"), 80);
+      setTimeout(() => playTone(1180, .12, .11, "triangle"), 170);
+    }
+
+    function launchCheer(text = "答對了！") {
+      playCheerSound();
+      const burst = document.createElement("div");
+      burst.className = "cheer-burst";
+
+      const word = document.createElement("div");
+      word.className = "cheer-word";
+      word.textContent = text;
+      burst.append(word);
+
+      const colors = ["#50a9ff", "#63df93", "#f79bdc", "#ffd86a", "#ffb650", "#ffffff"];
+      for (let i = 0; i < 34; i += 1) {
+        const piece = document.createElement("i");
+        piece.className = "confetti";
+        const angle = (Math.PI * 2 * i) / 34;
+        const distance = 130 + Math.random() * 250;
+        piece.style.setProperty("--dx", `${Math.cos(angle) * distance}px`);
+        piece.style.setProperty("--dy", `${Math.sin(angle) * distance + 180}px`);
+        piece.style.setProperty("--rot", `${Math.random() * 720 - 360}deg`);
+        piece.style.left = `${42 + Math.random() * 16}%`;
+        piece.style.top = `${22 + Math.random() * 18}%`;
+        piece.style.background = colors[i % colors.length];
+        piece.style.animationDelay = `${Math.random() * .16}s`;
+        burst.append(piece);
+      }
+
+      document.body.append(burst);
+      setTimeout(() => burst.remove(), 1300);
+    }
+
     function startGame() {
+      ensureAudio();
       setMode("quiz");
       state.score = 0;
       state.streak = 0;
@@ -1188,6 +1310,7 @@
       state.timer = setInterval(() => {
         state.time -= 1;
         if (!state.locked) state.roundTime -= 1;
+        playTick();
         updateHud();
         if (state.time <= 0) endGame();
         else if (state.roundTime <= 0) handleRoundTimeout();
