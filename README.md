@@ -17,3 +17,7 @@
 - 答對越快、連擊越高，分數越高。
 
 直接開啟 `index.html` 即可遊玩。
+
+## Web App
+
+發布到 GitHub Pages 後可作為 PWA 使用。支援加入手機主畫面，並透過 service worker 快取主要檔案。

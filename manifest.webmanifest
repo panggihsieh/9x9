@@ -1,0 +1,19 @@
+{
+  "name": "因數分解互動板",
+  "short_name": "因數互動板",
+  "description": "限時因數、因數配對與質因數分解互動測驗遊戲。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#071018",
+  "theme_color": "#0b141c",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
