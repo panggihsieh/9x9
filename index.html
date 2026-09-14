@@ -449,7 +449,7 @@
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       gap: 12px;
-      margin-top: 18px;
+      margin-bottom: 14px;
     }
 
     .primary,
@@ -692,6 +692,13 @@
       <section class="board" id="board" aria-label="1 到 100 數字板"></section>
 
       <aside class="side">
+        <div class="controls">
+          <button class="primary" id="newRound">↻ 再選一個數字</button>
+          <button class="secondary" id="startGame">▶ 開始測驗</button>
+          <button class="secondary" id="muteToggle">🔊 音效開</button>
+          <div class="feedback" id="feedback">教學示範模式會直接顯示答案；切到遊戲測驗後，用左邊數字板作答。</div>
+        </div>
+
         <div class="prompt">
           <div class="target-card" id="target">24</div>
           <div class="speech" id="speech">一起找出 24 的因數與質因數分解吧！</div>
@@ -724,12 +731,6 @@
           <div class="task-actions" data-actions="primes"></div>
         </section>
 
-        <div class="controls">
-          <button class="primary" id="newRound">↻ 再選一個數字</button>
-          <button class="secondary" id="startGame">▶ 開始測驗</button>
-          <button class="secondary" id="muteToggle">🔊 音效開</button>
-          <div class="feedback" id="feedback">教學示範模式會直接顯示答案；切到遊戲測驗後，用左邊數字板作答。</div>
-        </div>
       </aside>
     </main>
 
