@@ -1140,11 +1140,19 @@
     }
 
     function clearTask(task) {
+      if (state.runningTask === task) stopTaskTimer();
       state.quiz[task] = [];
       if (task === "pairs") state.quiz.pairDraft = [];
+      state.quiz.wrong[task] = 0;
+      state.quiz.solved[task] = false;
+      state.taskTimes[task] = state.taskLimit;
+      state.roundTime = state.taskTimes[task];
+      state.locked = false;
       renderQuiz();
       setActiveTask(task);
+      updateHud();
       showTaskNote(task, "已清除，可以重新作答。", "");
+      showFeedback(`${taskName(task)}已重設，請按「開始本題」重新作答。`, "");
     }
 
     function checkTask(task) {
@@ -1255,6 +1263,7 @@
       state.locked = false;
       setActiveTask(task);
       stopTaskTimer();
+      if (state.taskTimes[task] <= 0) state.taskTimes[task] = state.taskLimit;
       state.runningTask = task;
       state.roundTime = state.taskTimes[task];
       if (!state.muted) ensureAudio();
