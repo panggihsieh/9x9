@@ -123,9 +123,9 @@
     }
 
     .status-panel {
-      min-width: 440px;
+      min-width: 560px;
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: repeat(5, 1fr);
       gap: 10px;
       padding: 10px;
       border: 1px solid var(--line);
@@ -154,8 +154,10 @@
       line-height: 1;
     }
 
-    .timer strong { color: var(--yellow); }
-    .timer.danger { animation: pulseDanger .55s infinite alternate; }
+    .timer strong,
+    .round-timer strong { color: var(--yellow); }
+    .timer.danger,
+    .round-timer.danger { animation: pulseDanger .55s infinite alternate; }
 
     main {
       display: grid;
@@ -585,6 +587,10 @@
           <label>剩餘時間</label>
           <strong><span id="time">60</span>s</strong>
         </div>
+        <div class="meter round-timer" id="roundTimerBox">
+          <label>本題時間</label>
+          <strong><span id="roundTime">35</span>s</strong>
+        </div>
         <div class="meter">
           <label>分數</label>
           <strong id="score">0</strong>
@@ -592,6 +598,10 @@
         <div class="meter">
           <label>連擊</label>
           <strong><span id="streak">0</span>x</strong>
+        </div>
+        <div class="meter">
+          <label>題數</label>
+          <strong><span id="roundCount">0</span></strong>
         </div>
       </div>
     </header>
@@ -662,6 +672,9 @@
     const streakEl = document.querySelector("#streak");
     const timeEl = document.querySelector("#time");
     const timerBox = document.querySelector("#timerBox");
+    const roundTimeEl = document.querySelector("#roundTime");
+    const roundTimerBox = document.querySelector("#roundTimerBox");
+    const roundCountEl = document.querySelector("#roundCount");
     const modal = document.querySelector("#modal");
     const modalText = document.querySelector("#modalText");
     const demoModeButton = document.querySelector("#demoMode");
@@ -684,8 +697,12 @@
       streak: 0,
       maxStreak: 0,
       time: 60,
+      roundTime: 35,
+      roundLimit: 35,
+      roundCount: 0,
       active: false,
       timer: null,
+      locked: false,
       activeTask: "factors",
       draggedValue: null,
       quiz: {
@@ -787,6 +804,8 @@
 
     function resetQuiz() {
       state.activeTask = "factors";
+      state.locked = false;
+      state.roundTime = state.roundLimit;
       state.quiz = {
         factors: [],
         pairs: [],
@@ -798,6 +817,11 @@
     }
 
     function setMode(mode) {
+      if (mode === "demo") {
+        state.active = false;
+        state.locked = false;
+        clearInterval(state.timer);
+      }
       state.mode = mode;
       demoModeButton.classList.toggle("active", mode === "demo");
       quizModeButton.classList.toggle("active", mode === "quiz");
@@ -812,6 +836,7 @@
 
     function setNumber(n) {
       state.current = n;
+      if (state.active && state.mode === "quiz") state.roundCount += 1;
       targetEl.textContent = n;
       speech.textContent = state.mode === "demo"
         ? `一起找出 ${n} 的因數與質因數分解吧！`
@@ -819,6 +844,7 @@
       resetQuiz();
       renderChallenge();
       updateSelectedButton();
+      updateHud();
     }
 
     function renderChallenge() {
@@ -964,6 +990,10 @@
 
     function addQuizValue(task, value) {
       if (state.mode !== "quiz") return;
+      if (state.locked) {
+        showFeedback("這題已暫停作答，準備進入下一題。", "bad");
+        return;
+      }
       setActiveTask(task);
       if (state.quiz.solved[task]) {
         showTaskNote(task, "這一題已答對，可以挑戰其他區。", "good");
@@ -1005,26 +1035,30 @@
     }
 
     function checkTask(task) {
+      if (state.locked) return;
       const correct = isTaskCorrect(task);
       if (correct) {
         state.quiz.solved[task] = true;
         state.streak += 1;
         state.maxStreak = Math.max(state.maxStreak, state.streak);
         addScore(task === "pairs" ? 18 : 14);
+        adjustTime(2, "答對 +2 秒");
         showTaskNote(task, "正確！", "good");
-        showFeedback(`${taskName(task)}答對了，繼續完成其他區。`, "good");
+        showFeedback(`${taskName(task)}答對了，時間 +2 秒，繼續完成其他區。`, "good");
         if (Object.values(state.quiz.solved).every(Boolean)) completeQuizRound();
         return;
       }
 
       state.streak = 0;
       state.quiz.wrong[task] += 1;
+      adjustTime(-3, "答錯 -3 秒");
       updateHud();
       if (state.quiz.wrong[task] >= 3) {
         revealAnswer(task);
         state.quiz.solved[task] = true;
+        adjustTime(-5, "錯三次 -5 秒");
         showTaskNote(task, "錯三次，已顯示正確答案。", "bad");
-        showFeedback(`${taskName(task)}已揭曉答案，觀察後繼續下一區。`, "bad");
+        showFeedback(`${taskName(task)}已揭曉答案，時間再 -5 秒。`, "bad");
         if (Object.values(state.quiz.solved).every(Boolean)) completeQuizRound();
       } else {
         const section = document.querySelector(`[data-task="${task}"]`);
@@ -1067,13 +1101,16 @@
     }
 
     function completeQuizRound() {
-      const speedBonus = state.active ? Math.max(2, Math.ceil(state.time / 6)) : 2;
+      if (state.locked) return;
+      state.locked = true;
+      const speedBonus = state.active ? Math.max(2, Math.ceil(state.roundTime / 4)) : 2;
       addScore(24 + speedBonus);
+      adjustTime(5, "整題完成 +5 秒");
       targetEl.classList.remove("flash");
       void targetEl.offsetWidth;
       targetEl.classList.add("flash");
-      showFeedback(`三個任務完成！時間獎勵 +${speedBonus}。`, "good");
-      if (state.active) setTimeout(() => setNumber(chooseNumber()), 900);
+      showFeedback(`三個任務完成！速度獎勵 +${speedBonus} 分，時間 +5 秒。`, "good");
+      if (state.active) setTimeout(() => setNumber(chooseNumber()), 1000);
     }
 
     function addScore(points) {
@@ -1082,11 +1119,43 @@
       updateHud();
     }
 
+    function adjustTime(delta, reason) {
+      if (!state.active) return;
+      state.time = Math.max(0, Math.min(120, state.time + delta));
+      if (delta > 0) state.roundTime = Math.min(state.roundLimit, state.roundTime + delta);
+      if (delta < 0) state.roundTime = Math.max(0, state.roundTime + delta);
+      updateHud();
+      if (state.time <= 0) endGame();
+    }
+
+    function handleRoundTimeout() {
+      if (!state.active || state.locked) return;
+      state.locked = true;
+      state.streak = 0;
+      state.quiz.factors = factorsOf(state.current);
+      state.quiz.pairs = factorPairs(state.current);
+      state.quiz.pairDraft = [];
+      state.quiz.primes = primeFactorsOf(state.current);
+      state.quiz.solved = { factors: true, pairs: true, primes: true };
+      renderQuiz();
+      ["factors", "pairs", "primes"].forEach((task) => {
+        showTaskNote(task, "本題逾時，已顯示正確答案。", "bad");
+      });
+      updateHud();
+      showFeedback("本題時間到！答案已揭曉，準備下一題。", "bad");
+      setTimeout(() => {
+        if (state.active) setNumber(chooseNumber());
+      }, 1400);
+    }
+
     function updateHud() {
       scoreEl.textContent = state.score;
       streakEl.textContent = state.streak;
       timeEl.textContent = state.time;
+      roundTimeEl.textContent = state.roundTime;
+      roundCountEl.textContent = state.roundCount;
       timerBox.classList.toggle("danger", state.time <= 10 && state.active);
+      roundTimerBox.classList.toggle("danger", state.roundTime <= 8 && state.active);
     }
 
     function showFeedback(message, type) {
@@ -1100,6 +1169,9 @@
       state.streak = 0;
       state.maxStreak = 0;
       state.time = 60;
+      state.roundTime = state.roundLimit;
+      state.roundCount = 0;
+      state.locked = false;
       state.active = true;
       modal.classList.remove("open");
       clearInterval(state.timer);
@@ -1108,8 +1180,10 @@
       showFeedback("測驗開始！三區都要按確認，連續三次錯誤會揭曉答案。", "good");
       state.timer = setInterval(() => {
         state.time -= 1;
+        if (!state.locked) state.roundTime -= 1;
         updateHud();
         if (state.time <= 0) endGame();
+        else if (state.roundTime <= 0) handleRoundTimeout();
       }, 1000);
     }
 
