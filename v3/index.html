@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>全班因數大挑戰-卡呼遊戲｜第三版班級測驗</title>
-  <link rel="stylesheet" href="./styles.css?v=20260916-role-labels">
+  <title>全班因數挑戰｜第三版班級測驗</title>
+  <link rel="stylesheet" href="./styles.css?v=20260916-inline-steps">
 </head>
 <body>
   <div class="app">
@@ -14,10 +14,15 @@
           <span>×</span><span>÷</span><span>+</span><span>−</span>
         </div>
         <div>
-          <h1>全班因數大挑戰-卡呼遊戲</h1>
+          <h1>全班因數挑戰</h1>
           <p>第三版｜班級代碼測驗</p>
         </div>
       </div>
+      <a class="classroom-qr" href="./join-qr.png?v=student" target="_blank" rel="noopener" aria-label="放大 QR Code，平板掃描開啟全班因數挑戰">
+        <img src="./join-qr.png?v=student" width="256" height="256" alt="全班因數挑戰網址 QR Code">
+        <strong>平板掃描，開啟遊戲</strong>
+        <span>點選 QR Code 可放大</span>
+      </a>
       <nav class="tabs" aria-label="模式切換">
         <a class="tab" href="../" style="padding: 12px 18px; border-radius: 999px; text-decoration: none;">完整版首頁</a>
         <button class="tab active" data-view="teacher">老師開課</button>
@@ -32,31 +37,29 @@
           <h2>老師端</h2>
           <div class="teacher-stat">
             <span>身分／優先等級</span>
-            <strong id="teacherAuthStatus" class="role-badge" aria-live="polite">尚未查詢</strong>
+            <strong id="teacherAuthStatus" class="role-badge" aria-live="polite">尚未驗證</strong>
           </div>
           <div class="teacher-stat">
             <span>全站同時上線</span>
             <strong id="teacherGlobalOnline">讀取中</strong>
           </div>
           <form id="teacherIdentityForm" class="teacher-identity">
-            <label>老師 Gmail
-              <input id="teacherGmail" type="email" autocomplete="email" placeholder="teacher@gmail.com" aria-label="老師 Gmail" required>
+            <label><span class="step-label">gmail <span class="step-number" aria-hidden="true">1</span></span>
+              <input id="teacherGmail" type="email" autocomplete="email" placeholder="請輸入個人帳號驗證優先權" aria-label="gmail" required>
             </label>
-            <button type="submit" id="teacherLoginBtn">驗證優先權</button>
+            <label class="passcode-field"><span class="step-label">passcode <span class="step-number" aria-hidden="true">2</span></span>
+              <input id="teacherPasscode" type="password" autocomplete="current-password" placeholder="請輸入通行碼" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required>
+            </label>
+            <button type="submit" id="teacherLoginBtn" class="numbered-action" data-step="3" aria-label="步驟 3：驗證優先權">驗證優先權</button>
           </form>
           <form class="join-form" id="teacherForm">
             <label>
-              班級代碼
+              <span class="step-label">班級代碼 <span class="step-number" aria-hidden="true">4</span></span>
               <input id="teacherCode" maxlength="12" placeholder="例如 MATH24" required>
             </label>
-            <button type="submit" id="openClassBtn" disabled>開啟教室</button>
+            <button type="submit" id="openClassBtn" class="numbered-action" data-step="5" aria-label="步驟 5：開啟教室" disabled>開啟教室</button>
           </form>
-          <p id="teacherAccessNote" class="teacher-access-note" role="status">輸入 Gmail 查詢身分與優先權。</p>
-          <div class="role-guide" aria-label="身分與優先權說明">
-            <div><strong class="role-badge" data-role="admin">admin｜最高管理者</strong><span>登入後台後，可管理老師名單與優先權。</span></div>
-            <div><strong class="role-badge" data-role="auth">auth｜優先老師</strong><span>由 admin 核准，享有優先開課權。</span></div>
-            <div><strong class="role-badge" data-role="guest">guest｜一般老師</strong><span>列入名單後可開課；全站滿額時暫停開新班級。</span></div>
-          </div>
+          <p id="teacherAccessNote" class="teacher-access-note" role="status">請輸入老師 Gmail 與通行碼驗證身分。</p>
         </section>
 
         <section class="panel classroom-panel hidden" id="teacherRoom">
@@ -110,7 +113,7 @@
       </section>
 
       <section class="view" id="studentView">
-        <section class="panel hero-panel">
+        <section class="panel hero-panel student-entry">
           <div>
             <h2>學生登入</h2>
             <p>輸入老師提供的班級代碼與姓名。老師按開始後，會進入個人練習。</p>
@@ -118,13 +121,14 @@
           <form class="join-form" id="studentForm">
             <label>
               班級代碼
-              <input id="studentCode" maxlength="12" placeholder="例如 MATH24" required>
+              <input id="studentCode" maxlength="12" autocapitalize="characters" autocomplete="off" spellcheck="false" enterkeyhint="next" placeholder="例如 MATH24" required>
             </label>
             <label>
               姓名
-              <input id="studentName" maxlength="18" placeholder="請輸入姓名" required>
+              <input id="studentName" maxlength="18" autocomplete="name" enterkeyhint="go" placeholder="請輸入姓名" required>
             </label>
-            <button type="submit">加入班級</button>
+            <button type="submit" id="studentJoinBtn">加入班級</button>
+            <p id="studentJoinError" class="student-join-error" role="alert" hidden></p>
           </form>
         </section>
 
@@ -220,8 +224,12 @@
                   <option value="guest">guest｜一般老師</option>
                 </select>
               </label>
-              <button type="submit">新增／更新老師</button>
+              <label>通行碼
+                <input id="priorityTeacherPasscode" type="password" autocomplete="new-password" placeholder="首次必填；留白保留原通行碼" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" aria-describedby="passcodeHelp">
+              </label>
+              <button type="submit">儲存老師設定</button>
             </form>
+            <p id="passcodeHelp">通行碼為 4 位數字（可含前導零）；更新通行碼或權限後，老師須重新驗證。請將設定的通行碼提供給老師。</p>
             <div class="priority-list" id="priorityTeacherList"></div>
           </section>
         </section>
@@ -243,6 +251,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?v=20260916-role-labels"></script>
+  <script type="module" src="./app.js?v=20260916-tablet-login"></script>
 </body>
 </html>

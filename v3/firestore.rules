@@ -1,38 +1,94 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
+    function signedIn() { return request.auth != null; }
     function isSuperAdmin() {
-      return isSignedIn()
-        && request.auth.token.email_verified == true
+      return signedIn() && request.auth.token.email_verified == true
         && request.auth.token.firebase.sign_in_provider == 'google.com'
         && request.auth.token.email == 'teacher.hsieh@gmail.com';
     }
-
+    function grant(email) { return get(/databases/$(database)/documents/admins/$(email)).data; }
+    function roleFor(email, g) {
+      return email == 'teacher.hsieh@gmail.com' ? 'admin'
+        : g.role == 'auth' || (g.role == 'priorityTeacher' && g.get('priority', true)) ? 'auth' : 'guest';
+    }
+    function session() { return get(/databases/$(database)/documents/teacherSessions/$(request.auth.uid)).data; }
+    function validSession() {
+      let s = session();
+      let g = grant(s.email);
+      return signedIn() && s.verifiedAt + duration.value(8, 'h') > request.time
+        && s.verifiedAt >= g.updatedAt && s.passcode == g.passcode
+        && g.role in ['admin', 'auth', 'guest', 'priorityTeacher'] && s.role == roleFor(s.email, g);
+    }
+    function ownsRoom(room) {
+      return validSession() && (room.teacherEmail == session().email || session().role == 'admin');
+    }
+    function teacherFields(data) {
+      let s = session();
+      return data.teacherUid == request.auth.uid && data.teacherEmail == s.email
+        && data.teacherRole == s.role && data.teacherHasPriority == (s.role != 'guest')
+        && data.maxStudents == 100;
+    }
+    match /admins/{email} {
+      allow read: if isSuperAdmin();
+      allow create, update: if isSuperAdmin()
+        && request.resource.data.keys().hasOnly(['email', 'role', 'passcode', 'updatedAt', 'updatedBy'])
+        && request.resource.data.email == email
+        && request.resource.data.passcode is string && request.resource.data.passcode.matches('^[0-9]{4}$')
+        && (email == 'teacher.hsieh@gmail.com' ? request.resource.data.role == 'admin' : request.resource.data.role in ['auth', 'guest'])
+        && request.resource.data.updatedAt == request.time && request.resource.data.updatedBy == request.auth.uid;
+      allow delete: if isSuperAdmin() && email != 'teacher.hsieh@gmail.com';
+    }
+    // Store a candidate first, then verify that immutable candidate. Repeated denied
+    // session writes cannot try different PINs without consuming another attempt.
+    match /teacherAttempts/{email} {
+      function candidate() {
+        let d = request.resource.data;
+        return signedIn() && d.keys().hasOnly(['uid', 'passcode', 'attemptedAt', 'count', 'windowStartedAt'])
+          && d.uid == request.auth.uid && d.passcode is string && d.passcode.matches('^[0-9]{4}$')
+          && d.attemptedAt == request.time;
+      }
+      allow create: if candidate() && request.resource.data.count == 1 && request.resource.data.windowStartedAt == request.time;
+      allow update: if candidate() && (
+        (resource.data.windowStartedAt + duration.value(15, 'm') <= request.time
+          && request.resource.data.count == 1 && request.resource.data.windowStartedAt == request.time)
+        || (request.resource.data.windowStartedAt == resource.data.windowStartedAt
+          && request.time >= resource.data.attemptedAt + duration.value(2, 's')
+          && request.resource.data.count == resource.data.count + 1 && request.resource.data.count <= 5));
+      allow read, delete: if false;
+    }
+    match /teacherSessions/{uid} {
+      function verified() {
+        let s = request.resource.data;
+        let a = get(/databases/$(database)/documents/teacherAttempts/$(s.email)).data;
+        let g = grant(s.email);
+        return signedIn() && uid == request.auth.uid
+          && s.keys().hasOnly(['email', 'passcode', 'role', 'verifiedAt'])
+          && a.uid == uid && a.passcode == s.passcode
+          && a.attemptedAt + duration.value(1, 'm') > request.time
+          && g.passcode == s.passcode && g.role in ['admin', 'auth', 'guest', 'priorityTeacher']
+          && s.role == roleFor(s.email, g) && s.verifiedAt == request.time;
+      }
+      allow create, update: if verified();
+      allow get, delete: if signedIn() && uid == request.auth.uid;
+      allow list: if false;
+    }
     match /classrooms/{code} {
       allow read: if true;
-      allow create, update: if true;
-      allow delete: if true;
-
+      allow create: if validSession() && teacherFields(request.resource.data);
+      allow update: if (ownsRoom(resource.data) && teacherFields(request.resource.data))
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentCount', 'updatedAt'])
+          && request.resource.data.studentCount == resource.data.studentCount + 1
+          && request.resource.data.studentCount <= resource.data.maxStudents && request.resource.data.updatedAt == request.time);
+      allow delete: if ownsRoom(resource.data);
       match /students/{studentId} {
         allow read: if true;
         allow create: if request.resource.data.keys().hasOnly([
           'name', 'sessionId', 'score', 'joinedAt', 'lastSeen', 'onlineAt', 'status', 'tasks', 'currentNumber'
         ]);
         allow update: if true;
-        allow delete: if true;
+        allow delete: if ownsRoom(get(/databases/$(database)/documents/classrooms/$(code)).data);
       }
-    }
-
-    match /admins/{email} {
-      // Teachers look up a single email without signing in; only admin can list or edit.
-      allow get: if true;
-      allow list: if isSuperAdmin();
-      allow write: if isSuperAdmin();
     }
   }
 }

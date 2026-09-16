@@ -1,17 +1,5 @@
 export const SUPER_ADMIN_EMAIL = "teacher.hsieh@gmail.com";
 
-// Email lookup grants classroom priority only, never backend administration.
-export function resolveEmailAccess(value, grant = {}) {
-  const email = value.trim().toLowerCase();
-  if (!/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(email)) {
-    return { email: "", role: null, registered: false, hasPriority: false };
-  }
-  const hasPriority = email === SUPER_ADMIN_EMAIL || grant.role === "auth"
-    || (grant.role === "priorityTeacher" && grant.priority !== false);
-  return { email, role: hasPriority ? "auth" : "guest", hasPriority,
-    registered: email === SUPER_ADMIN_EMAIL || ["auth", "guest", "priorityTeacher"].includes(grant.role) };
-}
-
 export function isGoogleTeacher(user) {
   return Boolean(user?.emailVerified && user.email
     && user.providerData?.some((provider) => provider.providerId === "google.com"));

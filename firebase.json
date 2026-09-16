@@ -22,12 +22,23 @@
       "**/*.rules",
       "**/*.md",
       "**/*.log",
-      "**/*.example.js"
+      "**/*.example.js",
+      "functions/**",
+      "tests/**",
+      "package.json",
+      "package-lock.json"
     ],
-    "headers": [{
-      "source": "**",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
-    }]
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
+    ]
   },
   "firestore": {
     "rules": "v3/firestore.rules"
