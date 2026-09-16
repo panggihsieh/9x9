@@ -39,6 +39,17 @@
             </label>
             <button type="submit">開啟教室</button>
           </form>
+          <div class="teacher-access">
+            <div>
+              <span>老師登入</span>
+              <strong id="teacherAuthStatus">訪客最低優先</strong>
+            </div>
+            <div>
+              <span>全站同時上線</span>
+              <strong id="teacherGlobalOnline">0 / 100</strong>
+            </div>
+            <button type="button" id="teacherLoginBtn">Google 登入</button>
+          </div>
         </section>
 
         <section class="panel classroom-panel hidden" id="teacherRoom">
@@ -190,6 +201,13 @@
               <label>
                 老師 Email
                 <input id="priorityTeacherEmail" type="email" placeholder="teacher@example.com" required>
+              </label>
+              <label>
+                使用權限
+                <select id="priorityTeacherLevel">
+                  <option value="high">高優先</option>
+                  <option value="normal">一般優先</option>
+                </select>
               </label>
               <button type="submit">加入優先</button>
             </form>

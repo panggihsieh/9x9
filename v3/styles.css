@@ -237,6 +237,31 @@ input {
   gap: 10px;
 }
 
+.teacher-access {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, auto));
+  gap: 10px;
+  align-items: end;
+}
+
+.teacher-access div {
+  border: 1px solid #294055;
+  border-radius: 10px;
+  background: #0d1722;
+  padding: 10px 12px;
+}
+
+.teacher-access span {
+  display: block;
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.teacher-access strong {
+  overflow-wrap: anywhere;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -529,6 +554,7 @@ input {
   .topbar,
   .hero-panel,
   .dashboard-grid,
+  .teacher-access,
   .practice {
     grid-template-columns: 1fr;
   }

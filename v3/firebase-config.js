@@ -10,6 +10,7 @@ export const firebaseConfig = {
 
 export const classroomSettings = {
   maxStudents: 100,
+  maxGlobalOnline: 100,
   superAdminEmail: "teacher.hsieh@gmail.com",
   adminEmails: [
     "teacher.hsieh@gmail.com"
