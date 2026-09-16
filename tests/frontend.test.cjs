@@ -17,12 +17,12 @@ function page(verifyTeacher) {
   vm.runInContext(source.slice(source.indexOf('els.teacherIdentityForm.addEventListener("submit"'), source.indexOf('els.teacherLogoutBtn.addEventListener')), context);
   return { state, els, context, submit: () => submit({ preventDefault() {} }) };
 }
-test("wrong passcode clears previous priority, displays guest, and disables opening", async () => {
+test("wrong passcode clears previous priority, displays guest, and permits guest opening", async () => {
   const app = page(async () => { throw new Error("帳號或通行碼錯誤"); });
   Object.assign(app.state, { accessReady: true, teacherRegistered: true, teacherRole: "auth", teacherHasPriority: true, teacherToken: "old" });
   await app.submit();
   assert.equal(app.els.teacherAuthStatus.textContent, "guest｜一般");
-  assert.equal(app.els.openClassBtn.disabled, true);
+  assert.equal(app.els.openClassBtn.disabled, false);
   assert.equal(app.state.teacherToken, "");
   assert.equal(app.state.accessReady, false);
   assert.equal(app.state.teacherRole, "guest");
@@ -47,7 +47,7 @@ test("changing credentials during verification discards the old result", async (
   await pending;
   assert.equal(app.state.accessReady, false);
   assert.equal(app.state.teacherToken, "");
-  assert.equal(app.els.openClassBtn.disabled, true);
+  assert.equal(app.els.openClassBtn.disabled, false);
 });
 
 test("verification shows waiting state, ignores repeat submission, and restores button", async () => {

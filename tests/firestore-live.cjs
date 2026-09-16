@@ -104,13 +104,20 @@ function expect(result, status, label) {
     expect(await takeover(), 200, 'admin-released legacy code can be reused');
     expect(await write('admins/' + email, { email, role: 'auth', passcode: '1122', updatedBy: 'live-test' }, ['updatedAt'], adminToken), 200, 'reset isolated teacher passcode');
     expect(await write('classrooms/' + code, { status: 'waiting' }, ['updatedAt'], idToken, true), 403, 'old verification revoked immediately after reset');
+    const guestEmail = uid + '@guest.invalid';
+    expect(await write('teacherSessions/' + uid, { email: guestEmail, role: 'admin', passcode: '' }, ['verifiedAt']), 403, 'guest cannot forge admin session');
+    expect(await write('teacherSessions/' + uid, { email: guestEmail, role: 'guest', passcode: '' }, ['verifiedAt']), 200, 'guest session without credentials');
+    const guestRoom = { ...room, code: code + 'G', teacherEmail: guestEmail, teacherRole: 'guest', teacherHasPriority: false };
+    expect(await write('classrooms/' + code + 'G', guestRoom, ['createdAt', 'updatedAt', 'teacherLastSeenAt', 'lastStudentSeenAt']), 200, 'guest creates classroom with code only');
+    expect(await write('classrooms/' + code + 'G', { status: 'active' }, ['updatedAt'], idToken, true), 200, 'guest starts own classroom');
+    expect(await write('classrooms/' + code + 'G', { teacherHasPriority: true }, ['updatedAt'], idToken, true), 403, 'guest cannot elevate priority');
     console.log('Completed ' + checks + ' live checks.');
   } finally {
     for (const collection of ['students', 'sessions']) {
       const docs = await request(base + '/classrooms/' + code + '/' + collection, 'GET', null, adminToken);
       for (const doc of docs.data.documents || []) await request('https://firestore.googleapis.com/v1/' + doc.name, 'DELETE', null, adminToken);
     }
-    for (const path of ['admins/' + email, 'teacherAttempts/' + email, ...(uid ? ['teacherSessions/' + uid] : []), 'classrooms/' + code]) {
+    for (const path of ['admins/' + email, 'teacherAttempts/' + email, ...(uid ? ['teacherSessions/' + uid] : []), 'classrooms/' + code, 'classrooms/' + code + 'G']) {
       const result = await request(base + '/' + path, 'DELETE', null, adminToken);
       if (![200, 404].includes(result.status)) throw new Error('Test cleanup failed: ' + path);
     }

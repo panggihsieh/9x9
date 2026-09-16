@@ -352,13 +352,13 @@ function updateTeacherAccessUi() {
   els.teacherGlobalOnline.textContent = state.globalOnlineCount === null
     ? "讀取中" : `${state.globalOnlineCount} / ${onlineLimit}`;
   const displayRole = state.accessReady
-    ? state.teacherEmail === SUPER_ADMIN_EMAIL ? "admin" : state.teacherRole : state.teacherVerificationError ? "guest" : "";
+    ? state.teacherEmail === SUPER_ADMIN_EMAIL ? "admin" : state.teacherRole : "guest";
   els.teacherAuthStatus.dataset.role = displayRole;
   els.teacherAuthStatus.textContent = { admin: "admin｜最高", auth: "auth｜優先", guest: "guest｜一般" }[displayRole] || "尚未驗證";
   els.teacherLoginBtn.textContent = els.teacherLoginBtn.dataset.busy ? "驗證中…" : "驗證優先權";
-  els.openClassBtn.disabled = Boolean(els.openClassBtn.dataset.busy) || !state.accessReady || !state.teacherRegistered;
+  els.openClassBtn.disabled = Boolean(els.openClassBtn.dataset.busy);
   els.teacherAccessNote.textContent = state.teacherVerificationError || (!state.accessReady
-    ? "請輸入老師 Gmail 與通行碼驗證身分。"
+    ? "只輸入班級代碼即可用 guest 開課；驗證 Gmail 與通行碼可取得優先權。"
     : !state.teacherRegistered ? "未列入老師名單，請聯絡 admin 新增。"
     : displayRole === "admin" ? "admin 帳號｜可優先開課；管理名單請至後台登入。"
     : state.teacherHasPriority ? "auth｜admin 已設定為優先使用，可開啟教室。" : "guest｜一般優先權，可開啟教室。");
@@ -471,7 +471,18 @@ async function ensureTeacherCanOpenClassroom() {
   if (!state.accessReady || state.teacherEmail !== normalizeEmail(els.teacherGmail.value)
       || Date.now() >= state.teacherExpiresAt) {
     resetTeacherVerification();
-    throw new Error("請先輸入 Gmail 與通行碼驗證身分。");
+    if (!auth.currentUser) await signInAnonymously(auth);
+    const email = auth.currentUser.uid + "@guest.invalid";
+    await setDoc(doc(db, "teacherSessions", auth.currentUser.uid), {
+      email, role: "guest", passcode: "", verifiedAt: serverTimestamp()
+    });
+    state.teacherEmail = email;
+    state.teacherRole = "guest";
+    state.teacherHasPriority = false;
+    state.teacherRegistered = true;
+    state.accessReady = true;
+    state.teacherExpiresAt = Date.now() + 8 * 60 * 60 * 1000;
+    updateTeacherAccessUi();
   }
   const online = await refreshGlobalOnlineCount();
   if (!state.teacherHasPriority && online >= classroomSettings.maxGlobalOnline) throw new Error("全站已滿，guest 暫時不能開課。");
@@ -979,7 +990,7 @@ els.teacherForm.addEventListener("submit", async (event) => {
     els.teacherAccessNote.textContent = error.message;
   } finally {
     setButtonBusy(els.openClassBtn, false, "開啟教室");
-    els.openClassBtn.disabled = Boolean(els.openClassBtn.dataset.busy) || !state.accessReady || !state.teacherRegistered;
+    els.openClassBtn.disabled = Boolean(els.openClassBtn.dataset.busy);
   }
 });
 

@@ -13,7 +13,15 @@ service cloud.firestore {
         : g.role == 'auth' || (g.role == 'priorityTeacher' && g.get('priority', true)) ? 'auth' : 'guest';
     }
     function session() { return get(/databases/$(database)/documents/teacherSessions/$(request.auth.uid)).data; }
+    function guestSession(s) {
+      return signedIn() && s.email == request.auth.uid + '@guest.invalid'
+        && s.role == 'guest' && s.passcode == '';
+    }
     function validSession() {
+      let s = session();
+      return guestSession(s) ? s.verifiedAt + duration.value(8, 'h') > request.time : validVerifiedSession();
+    }
+    function validVerifiedSession() {
       let s = session();
       let g = grant(s.email);
       return signedIn() && s.verifiedAt + duration.value(8, 'h') > request.time
@@ -69,7 +77,10 @@ service cloud.firestore {
           && g.passcode == s.passcode && g.role in ['admin', 'auth', 'guest', 'priorityTeacher']
           && s.role == roleFor(s.email, g) && s.verifiedAt == request.time;
       }
-      allow create, update: if verified();
+      allow create, update: if (signedIn() && uid == request.auth.uid
+        && guestSession(request.resource.data)
+        && request.resource.data.keys().hasOnly(['email', 'passcode', 'role', 'verifiedAt'])
+        && request.resource.data.verifiedAt == request.time) || verified();
       allow get, delete: if signedIn() && uid == request.auth.uid;
       allow list: if false;
     }
