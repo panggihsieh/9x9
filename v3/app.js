@@ -149,6 +149,21 @@ const state = {
 
 localStorage.setItem("factor-v3-student-id", state.studentId);
 
+// 僅記住老師帳號及班級代碼；不儲存通行碼或視為已驗證。
+for (const [input, key] of [
+  [els.teacherGmail, "factor-v3-teacher-gmail"],
+  [els.teacherCode, "factor-v3-teacher-code"]
+]) {
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved !== null) input.value = saved;
+  } catch { /* 瀏覽器禁止儲存時，仍可手動輸入。 */ }
+  input.addEventListener("input", () => {
+    try { localStorage.setItem(key, input.value.trim()); } catch {}
+  });
+}
+
+
 function normalizeCode(value) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
 }
