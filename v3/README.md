@@ -1,6 +1,6 @@
 # 第三版：Firebase 班級測驗
 
-第三版已整合至專案主分支，提供 Kahoot 式班級代碼登入與老師監控 dashboard。線上入口：https://x9-factor-game.web.app/
+第三版已整合至專案主分支，提供 Kahoot 式班級代碼登入與老師監控 dashboard。線上入口：https://x9-factor-game.web.app/v3/
 
 ## 功能
 

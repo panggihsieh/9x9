@@ -6,7 +6,7 @@
 
 - 第一版：教學示範。點選左側數字後，自動顯示因數、因數配對與質因數分解。
 - 第二版：遊戲測驗。用左側數字板點選或拖拉作答，三個任務都要按確認鍵；連續三次錯誤會顯示正確答案，並加入總倒數與本題倒數。
-- 第三版：[班級測驗 Web App](https://x9-factor-game.web.app/)。老師以 Gmail 免登入查詢優先權，學生透過班級代碼加入，即時查看答題狀態與排行榜。
+- 第三版：[班級測驗 Web App](https://x9-factor-game.web.app/v3/)。老師以 Gmail 免登入查詢優先權，學生透過班級代碼加入，即時查看答題狀態與排行榜。
 
 ## 玩法
 
@@ -28,4 +28,4 @@
 
 第三版已合併至 `main`，程式位於 `v3/`，使用 Firebase Authentication 與 Firestore 提供 Gmail 免登入查詢、老師優先權、班級代碼、學生登入、老師監控面板、前 5 名與教室資料清空流程。設定與本機執行方式請見 [第三版說明](v3/README.md)。
 
-Firebase Hosting 以 `v3/` 為發布目錄；根目錄 `index.html` 保留第一、二版遊戲。
+[完整版首頁](https://x9-factor-game.web.app/) 提供第一版、第二版、第三版入口。Firebase Hosting 發布專案根目錄，第一、二版位於 `index.html`，第三版位於 `v3/`。

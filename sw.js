@@ -1,4 +1,4 @@
-const CACHE_NAME = "factor-board-v4";
+const CACHE_NAME = "factor-board-v5";
 const ASSETS = [
   "./",
   "./index.html",
@@ -24,13 +24,17 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  const assets = ASSETS.map((asset) => new URL(asset, self.registration.scope).href);
+  // Only cache the standalone game. Classroom and authentication requests stay online.
+  if (!assets.includes(url.href)) return;
   event.respondWith(
-    caches.match(event.request).then((cached) =>
-      cached || fetch(event.request).then((response) => {
+    fetch(event.request).then((response) => {
+      if (response.ok) {
         const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        return response;
-      }).catch(() => caches.match("./index.html"))
-    )
+        event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)));
+      }
+      return response;
+    }).catch(() => caches.match(event.request).then((cached) => cached || Response.error()))
   );
 });

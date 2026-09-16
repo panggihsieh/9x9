@@ -11,13 +11,17 @@
     }
   },
   "hosting": {
-    "public": "v3",
+    "public": ".",
     "ignore": [
       "firebase.json",
       "**/.*",
+      "**/.*/**",
+      ".git/**",
+      ".firebase/**",
       "**/node_modules/**",
       "**/*.rules",
       "**/*.md",
+      "**/*.log",
       "**/*.example.js"
     ],
     "headers": [{
