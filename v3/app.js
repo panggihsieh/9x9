@@ -84,6 +84,8 @@ const state = {
     primes: []
   },
   score: 0,
+  teacherSessionId: "",
+  studentSessionId: "",
   unsubTeacherRoom: null,
   unsubTeacherStudents: null,
   unsubStudentRoom: null,
@@ -168,11 +170,14 @@ function chooseNumber() {
 
 async function openClassroom(code) {
   const ref = classroomRef(code);
+  const sessionId = crypto.randomUUID();
+  state.teacherSessionId = sessionId;
   await clearClassroomStudents(code);
   const snapshot = await getDoc(ref);
   if (!snapshot.exists()) {
     await setDoc(ref, {
       code,
+      sessionId,
       status: "waiting",
       maxStudents: classroomSettings.maxStudents,
       studentCount: 0,
@@ -181,6 +186,7 @@ async function openClassroom(code) {
     });
   } else {
     await updateDoc(ref, {
+      sessionId,
       status: "waiting",
       maxStudents: classroomSettings.maxStudents,
       studentCount: 0,
@@ -196,12 +202,15 @@ function subscribeTeacher(code) {
 
   state.unsubTeacherRoom = onSnapshot(classroomRef(code), (snapshot) => {
     const room = snapshot.data();
+    state.teacherSessionId = room?.sessionId || state.teacherSessionId;
     els.classStatus.textContent = room?.status === "active" ? "練習中" : "等待中";
     els.maxStudents.textContent = room?.maxStudents || classroomSettings.maxStudents;
   });
 
   state.unsubTeacherStudents = onSnapshot(studentsRef(code), (snapshot) => {
-    const students = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+    const students = snapshot.docs
+      .map((item) => ({ id: item.id, ...item.data() }))
+      .filter((student) => !state.teacherSessionId || student.sessionId === state.teacherSessionId);
     renderTeacherDashboard(students);
   });
 }
@@ -242,6 +251,7 @@ function renderTeacherDashboard(students) {
 async function joinStudent(code, name) {
   state.studentCode = code;
   state.studentName = name;
+  let joinedSessionId = "";
   await runTransaction(db, async (transaction) => {
     const roomRef = classroomRef(code);
     const memberRef = studentRef(code);
@@ -250,23 +260,28 @@ async function joinStudent(code, name) {
 
     const room = roomSnap.data();
     const memberSnap = await transaction.get(memberRef);
+    const existingStudent = memberSnap.exists() ? memberSnap.data() : null;
+    const sessionId = room.sessionId || "";
+    const alreadyInSession = existingStudent?.sessionId === sessionId;
     const maxStudents = room.maxStudents || classroomSettings.maxStudents;
     const currentCount = room.studentCount || 0;
-    if (!memberSnap.exists() && currentCount >= maxStudents) {
+    if (!alreadyInSession && currentCount >= maxStudents) {
       throw new Error("班級人數已滿，無法加入");
     }
 
+    joinedSessionId = sessionId;
     transaction.set(memberRef, {
       name,
-      score: memberSnap.exists() ? memberSnap.data().score || 0 : 0,
+      sessionId,
+      score: alreadyInSession ? existingStudent.score || 0 : 0,
       status: "joined",
-      currentNumber: memberSnap.exists() ? memberSnap.data().currentNumber || state.currentNumber : state.currentNumber,
-      tasks: memberSnap.exists() ? memberSnap.data().tasks || { factors: false, pairs: false, primes: false } : { factors: false, pairs: false, primes: false },
-      joinedAt: memberSnap.exists() ? memberSnap.data().joinedAt : serverTimestamp(),
+      currentNumber: alreadyInSession ? existingStudent.currentNumber || state.currentNumber : state.currentNumber,
+      tasks: alreadyInSession ? existingStudent.tasks || { factors: false, pairs: false, primes: false } : { factors: false, pairs: false, primes: false },
+      joinedAt: alreadyInSession ? existingStudent.joinedAt : serverTimestamp(),
       lastSeen: serverTimestamp()
     }, { merge: true });
 
-    if (!memberSnap.exists()) {
+    if (!alreadyInSession) {
       transaction.update(roomRef, {
         studentCount: increment(1),
         updatedAt: serverTimestamp()
@@ -274,6 +289,7 @@ async function joinStudent(code, name) {
     }
   });
 
+  state.studentSessionId = joinedSessionId;
   subscribeStudent(code);
 }
 
@@ -287,6 +303,11 @@ function subscribeStudent(code) {
       showStudentEnded();
       return;
     }
+    if (state.studentSessionId && room.sessionId && room.sessionId !== state.studentSessionId) {
+      showStudentEnded();
+      return;
+    }
+    state.studentSessionId = room.sessionId || state.studentSessionId;
     if (room.status === "active") {
       els.studentLobby.classList.add("hidden");
       els.practiceView.classList.remove("hidden");
@@ -389,6 +410,7 @@ async function checkStudentTask(task) {
   note.textContent = "完成";
   note.style.color = "var(--green)";
   await updateDoc(studentRef(state.studentCode), {
+    sessionId: state.studentSessionId,
     [`tasks.${task}`]: true,
     score: increment(task === "pairs" ? 18 : 14),
     lastSeen: serverTimestamp()
@@ -416,6 +438,7 @@ async function nextNumber() {
   renderAnswers();
   updateTargetFocus();
   await updateDoc(studentRef(state.studentCode), {
+    sessionId: state.studentSessionId,
     currentNumber: state.currentNumber,
     tasks: { factors: false, pairs: false, primes: false },
     lastSeen: serverTimestamp()
@@ -455,6 +478,7 @@ els.teacherForm.addEventListener("submit", async (event) => {
   els.teacherRoomCode.textContent = code;
   els.teacherRoom.classList.remove("hidden");
   els.classStatus.textContent = "等待中";
+  renderTeacherDashboard([]);
   subscribeTeacher(code);
 });
 
