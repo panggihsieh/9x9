@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數大挑戰-卡呼遊戲｜第三版班級測驗</title>
-  <link rel="stylesheet" href="./styles.css?v=20260916-role-gui">
+  <link rel="stylesheet" href="./styles.css?v=20260916-role-labels">
 </head>
 <body>
   <div class="app">
@@ -49,7 +49,7 @@
               班級代碼
               <input id="teacherCode" maxlength="12" placeholder="例如 MATH24" required>
             </label>
-            <button type="submit" id="openClassBtn">開啟教室</button>
+            <button type="submit" id="openClassBtn" disabled>開啟教室</button>
           </form>
           <p id="teacherAccessNote" class="teacher-access-note" role="status">輸入 Gmail 查詢身分與優先權。</p>
           <div class="role-guide" aria-label="身分與優先權說明">
@@ -216,8 +216,8 @@
               <label>
                 使用權限
                 <select id="priorityTeacherLevel">
-                  <option value="auth">auth｜核准優先</option>
-                  <option value="guest">guest｜未核准</option>
+                  <option value="auth">auth｜優先老師</option>
+                  <option value="guest">guest｜一般老師</option>
                 </select>
               </label>
               <button type="submit">新增／更新老師</button>
@@ -243,6 +243,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?v=20260916-role-gui"></script>
+  <script type="module" src="./app.js?v=20260916-role-labels"></script>
 </body>
 </html>

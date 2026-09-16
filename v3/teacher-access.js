@@ -32,7 +32,7 @@ export function resolveTeacherAccess(user, grant = {}) {
     role,
     registered,
     hasPriority: role !== "guest",
-    label: { admin: "admin｜最高管理者", auth: "auth｜已核准", guest: "guest｜未核准" }[role],
+    label: { admin: "admin｜最高管理者", auth: "auth｜優先老師", guest: registered ? "guest｜一般老師" : "guest｜未列入名單" }[role],
     priority: { admin: "最高", auth: "優先", guest: "最低" }[role]
   };
 }

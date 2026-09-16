@@ -22,7 +22,7 @@ import {
   updateDoc
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { classroomSettings, firebaseConfig } from "./firebase-config.js";
-import { SUPER_ADMIN_EMAIL, resolveEmailAccess, resolveTeacherAccess } from "./teacher-access.js";
+import { SUPER_ADMIN_EMAIL, resolveEmailAccess, resolveTeacherAccess } from "./teacher-access.js?v=20260916-role-labels";
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
