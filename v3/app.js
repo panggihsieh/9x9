@@ -1002,8 +1002,7 @@ els.studentForm.addEventListener("submit", async (event) => {
   const code = normalizeCode(els.studentCode.value);
   const name = els.studentName.value.trim();
   els.studentJoinError.hidden = true;
-  els.studentJoinBtn.disabled = true;
-  els.studentJoinBtn.textContent = "加入中…";
+  setButtonBusy(els.studentJoinBtn, true, "加入中…");
   try {
     if (!code || !name) throw new Error("請填寫班級代碼與姓名。");
     els.studentCode.value = code;
@@ -1014,8 +1013,7 @@ els.studentForm.addEventListener("submit", async (event) => {
     els.studentJoinError.textContent = error.message;
     els.studentJoinError.hidden = false;
   } finally {
-    els.studentJoinBtn.disabled = false;
-    els.studentJoinBtn.textContent = "加入班級";
+    setButtonBusy(els.studentJoinBtn, false, "加入班級");
   }
 });
 
