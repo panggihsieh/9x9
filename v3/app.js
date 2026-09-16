@@ -1,8 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
   GoogleAuthProvider,
+  getRedirectResult,
   getAuth,
-  signInWithPopup
+  signInWithRedirect
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import {
   collection,
@@ -525,6 +526,22 @@ function escapeHtml(value) {
   }[char]));
 }
 
+async function showAdminAccess(user) {
+  const email = user.email;
+  const allowedByConfig = classroomSettings.adminEmails.includes(email);
+  const adminDoc = await getDoc(doc(db, "admins", email));
+  const allowedByDb = adminDoc.exists();
+  els.adminPanel.classList.remove("hidden");
+  els.adminStatus.textContent = allowedByConfig || allowedByDb
+    ? `${email} 已取得後台管理權限。`
+    : `${email} 尚未列入後台管理權限。`;
+}
+
+function showAdminError(error) {
+  els.adminPanel.classList.remove("hidden");
+  els.adminStatus.textContent = `Google 登入失敗：${error.code || "unknown"} ${error.message || ""}`;
+}
+
 els.tabs.forEach((tab) => {
   tab.addEventListener("click", () => switchView(tab.dataset.view));
 });
@@ -597,16 +614,17 @@ els.nextNumberBtn.addEventListener("click", nextNumber);
 
 els.adminLoginBtn.addEventListener("click", async () => {
   const provider = new GoogleAuthProvider();
-  const result = await signInWithPopup(auth, provider);
-  const email = result.user.email;
-  const allowedByConfig = classroomSettings.adminEmails.includes(email);
-  const adminDoc = await getDoc(doc(db, "admins", email));
-  const allowedByDb = adminDoc.exists();
+  provider.setCustomParameters({ prompt: "select_account" });
   els.adminPanel.classList.remove("hidden");
-  els.adminStatus.textContent = allowedByConfig || allowedByDb
-    ? `${email} 具有優先使用權限。`
-    : `${email} 尚未列入優先使用名單。`;
+  els.adminStatus.textContent = "正在前往 Google 登入...";
+  await signInWithRedirect(auth, provider).catch(showAdminError);
 });
+
+getRedirectResult(auth)
+  .then((result) => {
+    if (result?.user) showAdminAccess(result.user);
+  })
+  .catch(showAdminError);
 
 renderNumberBoard();
 renderAnswers();
