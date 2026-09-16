@@ -299,8 +299,8 @@ input {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.35fr) minmax(220px, .8fr);
-  gap: 18px;
+  grid-template-columns: minmax(150px, .58fr) minmax(620px, 1.85fr) minmax(150px, .58fr);
+  gap: 14px;
   align-items: start;
 }
 
@@ -332,7 +332,7 @@ input {
   border: 1px solid #294055;
   border-radius: 10px;
   background: #0d1722;
-  padding: 12px;
+  padding: 10px;
 }
 
 .roster-list,
@@ -343,9 +343,16 @@ input {
 
 .roster-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+}
+
+.roster-row strong,
+.task-status-row strong,
+.leaderboard strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .roster-row span {
@@ -355,7 +362,7 @@ input {
 
 .task-status-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
   gap: 12px;
 }
 
@@ -370,7 +377,8 @@ input {
 .task-status-column h4 {
   margin: 0 0 10px;
   color: #dff0ff;
-  font-size: 17px;
+  font-size: 16px;
+  white-space: nowrap;
 }
 
 .task-status-row {
