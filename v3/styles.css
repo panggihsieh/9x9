@@ -368,6 +368,61 @@ input {
   color: #9dd0ff;
 }
 
+.admin-profile {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.admin-profile div,
+.priority-row {
+  border: 1px solid #294055;
+  border-radius: 10px;
+  background: #0d1722;
+  padding: 12px;
+}
+
+.admin-profile span {
+  display: block;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.admin-profile strong {
+  overflow-wrap: anywhere;
+}
+
+.admin-tools {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #294055;
+}
+
+.admin-form {
+  justify-content: flex-start;
+}
+
+.priority-list {
+  display: grid;
+  gap: 8px;
+}
+
+.priority-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.priority-row small {
+  display: block;
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .practice {
   display: grid;
   grid-template-columns: minmax(320px, .8fr) minmax(460px, 1.2fr);

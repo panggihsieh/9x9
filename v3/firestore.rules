@@ -6,9 +6,9 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdmin() {
+    function isSuperAdmin() {
       return isSignedIn()
-        && exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+        && request.auth.token.email == 'teacher.hsieh@gmail.com';
     }
 
     match /classrooms/{code} {
@@ -27,8 +27,9 @@ service cloud.firestore {
     }
 
     match /admins/{email} {
-      allow read: if isSignedIn() && request.auth.token.email == email;
-      allow write: if isAdmin();
+      allow get: if isSuperAdmin() || (isSignedIn() && request.auth.token.email == email);
+      allow list: if isSuperAdmin();
+      allow write: if isSuperAdmin();
     }
   }
 }

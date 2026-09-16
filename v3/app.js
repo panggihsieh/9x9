@@ -26,6 +26,7 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 const ONLINE_WINDOW_MS = 45_000;
 const PRESENCE_INTERVAL_MS = 15_000;
+const SUPER_ADMIN_EMAIL = (classroomSettings.superAdminEmail || "teacher.hsieh@gmail.com").toLowerCase();
 
 const els = {
   tabs: document.querySelectorAll(".tab"),
@@ -72,7 +73,14 @@ const els = {
   practiceFeedback: document.querySelector("#practiceFeedback"),
   adminLoginBtn: document.querySelector("#adminLoginBtn"),
   adminPanel: document.querySelector("#adminPanel"),
-  adminStatus: document.querySelector("#adminStatus")
+  adminStatus: document.querySelector("#adminStatus"),
+  adminEmail: document.querySelector("#adminEmail"),
+  adminRole: document.querySelector("#adminRole"),
+  adminPriority: document.querySelector("#adminPriority"),
+  superAdminTools: document.querySelector("#superAdminTools"),
+  priorityTeacherForm: document.querySelector("#priorityTeacherForm"),
+  priorityTeacherEmail: document.querySelector("#priorityTeacherEmail"),
+  priorityTeacherList: document.querySelector("#priorityTeacherList")
 };
 
 const state = {
@@ -107,6 +115,10 @@ function normalizeCode(value) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
 }
 
+function normalizeEmail(value) {
+  return value.trim().toLowerCase();
+}
+
 function classroomRef(code) {
   return doc(db, "classrooms", code);
 }
@@ -117,6 +129,10 @@ function studentsRef(code) {
 
 function studentRef(code, studentId = state.studentId) {
   return doc(db, "classrooms", code, "students", studentId);
+}
+
+function adminRef(email) {
+  return doc(db, "admins", normalizeEmail(email));
 }
 
 function switchView(view) {
@@ -527,19 +543,66 @@ function escapeHtml(value) {
 }
 
 async function showAdminAccess(user) {
-  const email = user.email;
-  const allowedByConfig = classroomSettings.adminEmails.includes(email);
-  const adminDoc = await getDoc(doc(db, "admins", email));
-  const allowedByDb = adminDoc.exists();
+  const email = normalizeEmail(user.email || "");
+  const isSuperAdmin = email === SUPER_ADMIN_EMAIL;
+  const adminDoc = await getDoc(adminRef(email));
+  const hasPriority = isSuperAdmin || classroomSettings.adminEmails.includes(email) || adminDoc.exists();
   els.adminPanel.classList.remove("hidden");
-  els.adminStatus.textContent = allowedByConfig || allowedByDb
-    ? `${email} 已取得後台管理權限。`
-    : `${email} 尚未列入後台管理權限。`;
+  els.adminEmail.textContent = email;
+  els.adminRole.textContent = isSuperAdmin ? "最高管理者" : hasPriority ? "優先老師" : "一般老師";
+  els.adminPriority.textContent = hasPriority ? "有優先權" : "無優先權";
+  els.adminStatus.textContent = isSuperAdmin
+    ? "你可以管理老師優先使用名單。"
+    : "你只能查看自己的登入資料與優先權狀態。";
+  els.superAdminTools.classList.toggle("hidden", !isSuperAdmin);
+  if (isSuperAdmin) await renderPriorityTeachers();
 }
 
 function showAdminError(error) {
   els.adminPanel.classList.remove("hidden");
   els.adminStatus.textContent = `Google 登入失敗：${error.code || "unknown"} ${error.message || ""}`;
+}
+
+async function renderPriorityTeachers() {
+  const snapshot = await getDocs(collection(db, "admins"));
+  const teachers = snapshot.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  els.priorityTeacherList.innerHTML = teachers.length
+    ? teachers.map((teacher) => `
+      <div class="priority-row">
+        <div>
+          <strong>${escapeHtml(teacher.email || teacher.id)}</strong>
+          <small>${teacher.role || "priorityTeacher"}</small>
+        </div>
+        <button type="button" class="danger" data-remove-priority="${escapeHtml(teacher.id)}">移除</button>
+      </div>
+    `).join("")
+    : "<p>目前沒有額外優先老師。</p>";
+}
+
+async function addPriorityTeacher(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return;
+  await setDoc(adminRef(normalizedEmail), {
+    email: normalizedEmail,
+    role: "priorityTeacher",
+    priority: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+  els.priorityTeacherEmail.value = "";
+  await renderPriorityTeachers();
+}
+
+async function removePriorityTeacher(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (normalizedEmail === SUPER_ADMIN_EMAIL) {
+    alert("最高管理者不能從優先名單移除。");
+    return;
+  }
+  await deleteDoc(adminRef(normalizedEmail));
+  await renderPriorityTeachers();
 }
 
 els.tabs.forEach((tab) => {
@@ -618,6 +681,28 @@ els.adminLoginBtn.addEventListener("click", async () => {
   els.adminPanel.classList.remove("hidden");
   els.adminStatus.textContent = "正在前往 Google 登入...";
   await signInWithRedirect(auth, provider).catch(showAdminError);
+});
+
+els.priorityTeacherForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await addPriorityTeacher(els.priorityTeacherEmail.value);
+    els.adminStatus.textContent = "已更新優先老師名單。";
+  } catch (error) {
+    showAdminError(error);
+  }
+});
+
+els.priorityTeacherList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-remove-priority]");
+  if (!button) return;
+  if (!confirm(`確定移除 ${button.dataset.removePriority} 的優先權？`)) return;
+  try {
+    await removePriorityTeacher(button.dataset.removePriority);
+    els.adminStatus.textContent = "已更新優先老師名單。";
+  } catch (error) {
+    showAdminError(error);
+  }
 });
 
 getRedirectResult(auth)

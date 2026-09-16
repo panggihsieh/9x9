@@ -177,7 +177,24 @@
         </section>
         <section class="panel hidden" id="adminPanel">
           <h3>權限狀態</h3>
+          <div class="admin-profile">
+            <div><span>Email</span><strong id="adminEmail">尚未登入</strong></div>
+            <div><span>身分</span><strong id="adminRole">--</strong></div>
+            <div><span>優先權</span><strong id="adminPriority">--</strong></div>
+          </div>
           <p id="adminStatus">尚未登入</p>
+
+          <section class="admin-tools hidden" id="superAdminTools">
+            <h3>優先老師管理</h3>
+            <form class="join-form admin-form" id="priorityTeacherForm">
+              <label>
+                老師 Email
+                <input id="priorityTeacherEmail" type="email" placeholder="teacher@example.com" required>
+              </label>
+              <button type="submit">加入優先</button>
+            </form>
+            <div class="priority-list" id="priorityTeacherList"></div>
+          </section>
         </section>
       </section>
     </main>
