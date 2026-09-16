@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數大挑戰-卡呼遊戲｜第三版班級測驗</title>
-  <link rel="stylesheet" href="./styles.css?v=20260916-email-priority">
+  <link rel="stylesheet" href="./styles.css?v=20260916-role-gui">
 </head>
 <body>
   <div class="app">
@@ -31,8 +31,8 @@
         <section class="panel hero-panel teacher-hero">
           <h2>老師端</h2>
           <div class="teacher-stat">
-            <span>優先等級</span>
-            <strong id="teacherAuthStatus" aria-live="polite">未登入</strong>
+            <span>身分／優先等級</span>
+            <strong id="teacherAuthStatus" class="role-badge" aria-live="polite">尚未查詢</strong>
           </div>
           <div class="teacher-stat">
             <span>全站同時上線</span>
@@ -51,7 +51,12 @@
             </label>
             <button type="submit" id="openClassBtn">開啟教室</button>
           </form>
-          <p id="teacherAccessNote" class="teacher-access-note" role="status">尚未登入</p>
+          <p id="teacherAccessNote" class="teacher-access-note" role="status">輸入 Gmail 查詢身分與優先權。</p>
+          <div class="role-guide" aria-label="身分與優先權說明">
+            <div><strong class="role-badge" data-role="admin">admin｜最高管理者</strong><span>登入後台後，可管理老師名單與優先權。</span></div>
+            <div><strong class="role-badge" data-role="auth">auth｜優先老師</strong><span>由 admin 核准，享有優先開課權。</span></div>
+            <div><strong class="role-badge" data-role="guest">guest｜一般老師</strong><span>列入名單後可開課；全站滿額時暫停開新班級。</span></div>
+          </div>
         </section>
 
         <section class="panel classroom-panel hidden" id="teacherRoom">
@@ -238,6 +243,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?v=20260916-email-priority"></script>
+  <script type="module" src="./app.js?v=20260916-role-gui"></script>
 </body>
 </html>

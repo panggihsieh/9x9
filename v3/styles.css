@@ -196,6 +196,39 @@ h1 {
   margin: 0;
 }
 
+.role-badge {
+  display: inline-block;
+  width: fit-content;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.role-badge[data-role="admin"] { color: #ffe49b; background: #382e16; border-color: #8b702b; }
+.role-badge[data-role="auth"] { color: #9beac1; background: #15382b; border-color: #327d5c; }
+.role-badge[data-role="guest"] { color: #bcdcff; background: #182c42; border-color: #41668d; }
+
+.role-guide {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.role-guide > div {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.role-guide span { color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+@media (max-width: 640px) {
+  .role-guide { grid-template-columns: 1fr; }
+}
+
 @media (min-width: 981px) and (max-width: 1200px) {
   .teacher-hero {
     grid-template-columns: auto 1fr 1fr;

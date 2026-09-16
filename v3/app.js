@@ -300,14 +300,17 @@ function updateTeacherAccessUi() {
   const onlineLimit = classroomSettings.maxGlobalOnline || classroomSettings.maxStudents;
   els.teacherGlobalOnline.textContent = state.globalOnlineCount === null
     ? "讀取中" : `${state.globalOnlineCount} / ${onlineLimit}`;
-  els.teacherAuthStatus.textContent = state.accessReady
-    ? state.teacherHasPriority ? "優先使用" : "一般優先權" : "尚未查詢";
+  const displayRole = state.accessReady
+    ? state.teacherEmail === SUPER_ADMIN_EMAIL ? "admin" : state.teacherRole : "";
+  els.teacherAuthStatus.dataset.role = displayRole;
+  els.teacherAuthStatus.textContent = { admin: "admin｜最高", auth: "auth｜優先", guest: "guest｜一般" }[displayRole] || "尚未查詢";
   els.teacherLoginBtn.textContent = "驗證優先權";
   els.openClassBtn.disabled = !state.accessReady || !state.teacherRegistered;
   els.teacherAccessNote.textContent = !state.accessReady
     ? "輸入老師 Gmail 查詢優先權，無需登入；名單由 admin 在後台設定。"
     : !state.teacherRegistered ? "未列入老師名單，請聯絡 admin 新增。"
-    : state.teacherHasPriority ? "admin 已設定為優先使用，可開啟教室。" : "一般優先權，可開啟教室。";
+    : displayRole === "admin" ? "admin 帳號｜可優先開課；管理名單請至後台登入。"
+    : state.teacherHasPriority ? "auth｜admin 已設定為優先使用，可開啟教室。" : "guest｜一般優先權，可開啟教室。";
 }
 
 async function refreshTeacherAccess() {
@@ -647,6 +650,8 @@ function showAdminAccess(user, access) {
   els.adminEmail.textContent = access.email || "尚未登入";
   els.adminName.textContent = user?.displayName || "--";
   els.adminRole.textContent = access.label;
+  els.adminRole.className = "role-badge";
+  els.adminRole.dataset.role = access.role || "";
   els.adminPriority.textContent = access.priority;
   els.adminStatus.textContent = access.role === "admin" ? "admin｜最高管理者" : "後台僅限 admin 登入";
   els.superAdminTools.classList.toggle("hidden", access.role !== "admin");
@@ -691,6 +696,8 @@ function renderPriorityTeachers() {
     email.textContent = teacher.id;
     info.append(name, email);
     const role = document.createElement("strong");
+    role.className = "role-badge";
+    role.dataset.role = access.role || "";
     role.textContent = access.registered ? access.label : "已移除開課資格";
     const button = document.createElement("button");
     button.type = "button";
