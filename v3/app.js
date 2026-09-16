@@ -168,6 +168,7 @@ function chooseNumber() {
 
 async function openClassroom(code) {
   const ref = classroomRef(code);
+  await clearClassroomStudents(code);
   const snapshot = await getDoc(ref);
   if (!snapshot.exists()) {
     await setDoc(ref, {
@@ -179,7 +180,13 @@ async function openClassroom(code) {
       updatedAt: serverTimestamp()
     });
   } else {
-    await updateDoc(ref, { updatedAt: serverTimestamp() });
+    await updateDoc(ref, {
+      status: "waiting",
+      maxStudents: classroomSettings.maxStudents,
+      studentCount: 0,
+      startedAt: null,
+      updatedAt: serverTimestamp()
+    });
   }
 }
 
@@ -415,9 +422,13 @@ async function nextNumber() {
   });
 }
 
-async function endClassroom(code) {
+async function clearClassroomStudents(code) {
   const students = await getDocs(studentsRef(code));
   await Promise.all(students.docs.map((item) => deleteDoc(item.ref)));
+}
+
+async function endClassroom(code) {
+  await clearClassroomStudents(code);
   await deleteDoc(classroomRef(code));
 }
 
@@ -443,6 +454,7 @@ els.teacherForm.addEventListener("submit", async (event) => {
   state.teacherCode = code;
   els.teacherRoomCode.textContent = code;
   els.teacherRoom.classList.remove("hidden");
+  els.classStatus.textContent = "等待中";
   subscribeTeacher(code);
 });
 
