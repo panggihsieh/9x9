@@ -652,7 +652,21 @@ async function showAdminAccess(user) {
 
 function showAdminError(error) {
   els.adminPanel.classList.remove("hidden");
-  els.adminStatus.textContent = `Google 登入失敗：${error.code || "unknown"} ${error.message || ""}`;
+  els.adminStatus.textContent = getGoogleLoginErrorMessage(error);
+}
+
+function getGoogleLoginErrorMessage(error) {
+  if (error?.code === "auth/configuration-not-found") {
+    return "Google 登入尚未在 Firebase Authentication 啟用，請到 Firebase Console 啟用 Google 登入提供者。";
+  }
+  return `Google 登入失敗：${error?.code || "unknown"} ${error?.message || ""}`;
+}
+
+async function startGoogleLogin(source) {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  sessionStorage.setItem("factor-login-source", source);
+  await signInWithRedirect(auth, provider);
 }
 
 async function renderPriorityTeachers() {
@@ -774,19 +788,13 @@ document.querySelectorAll("[data-clear]").forEach((button) => {
 els.nextNumberBtn.addEventListener("click", nextNumber);
 
 els.teacherLoginBtn.addEventListener("click", async () => {
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: "select_account" });
-  sessionStorage.setItem("factor-login-source", "teacher");
-  await signInWithRedirect(auth, provider).catch((error) => alert(error.message));
+  await startGoogleLogin("teacher").catch((error) => alert(getGoogleLoginErrorMessage(error)));
 });
 
 els.adminLoginBtn.addEventListener("click", async () => {
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: "select_account" });
-  sessionStorage.setItem("factor-login-source", "admin");
   els.adminPanel.classList.remove("hidden");
   els.adminStatus.textContent = "正在前往 Google 登入...";
-  await signInWithRedirect(auth, provider).catch(showAdminError);
+  await startGoogleLogin("admin").catch(showAdminError);
 });
 
 els.priorityTeacherForm.addEventListener("submit", async (event) => {
