@@ -282,6 +282,7 @@ function subscribeTeacher(code) {
   state.unsubTeacherStudents?.();
   clearInterval(state.teacherRefreshTimer);
 
+  let lastDuration;
   state.unsubTeacherRoom = onSnapshot(classroomRef(code), (snapshot) => {
     const room = snapshot.data();
     if (!roomIsOpen(room) || room.sessionId !== state.teacherSessionId) {
@@ -293,6 +294,12 @@ function subscribeTeacher(code) {
     }
     state.teacherMaxStudents = room?.maxStudents || classroomSettings.maxStudents;
     els.classStatus.textContent = room?.status === "active" ? "練習中" : "等待中";
+    const duration = [2, 3, 5, 10].includes(room.durationMinutes) ? room.durationMinutes : 3;
+    if (duration !== lastDuration) document.querySelectorAll('[name="durationMinutes"]').forEach(input => { input.checked = Number(input.value) === duration; });
+    lastDuration = duration;
+    document.querySelector('#durationOptions').disabled = room.status === "active";
+    els.startClassBtn.disabled = room.status === "active";
+    if (room.status === "active") els.classStatus.textContent = `練習中 · ${duration} 分鐘`;
     els.maxStudents.textContent = state.teacherMaxStudents;
   });
 
@@ -962,11 +969,19 @@ els.teacherForm.addEventListener("submit", async (event) => {
 });
 
 els.startClassBtn.addEventListener("click", async () => {
-  if (!state.teacherCode) return;
+  if (!state.teacherCode || els.startClassBtn.disabled) return;
+  const durationMinutes = Number(document.querySelector('[name="durationMinutes"]:checked')?.value || 3);
+  if (![2, 3, 5, 10].includes(durationMinutes)) return;
+  els.startClassBtn.disabled = true;
+  document.querySelector('#durationOptions').disabled = true;
   try {
-    await updateCurrentRoom(state.teacherCode, state.teacherSessionId, { status: "active", startedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    await updateCurrentRoom(state.teacherCode, state.teacherSessionId, { status: "active", durationMinutes, startedAt: serverTimestamp(), updatedAt: serverTimestamp() });
     playSound("start");
-  } catch (error) { els.teacherAccessNote.textContent = error.message; }
+  } catch (error) {
+    els.startClassBtn.disabled = false;
+    document.querySelector('#durationOptions').disabled = false;
+    els.teacherAccessNote.textContent = error.message;
+  }
 });
 
 els.endClassBtn.addEventListener("click", async () => {

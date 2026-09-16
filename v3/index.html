@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數挑戰｜第三版全班同步比賽</title>
-  <link rel="stylesheet" href="./styles.css?v=20260916-sound-busy">
+  <link rel="stylesheet" href="./styles.css?v=20260916-duration">
 </head>
 <body>
   <div class="app">
@@ -73,6 +73,13 @@
               <strong id="teacherRoomCode">----</strong>
             </div>
             <div class="room-actions">
+              <fieldset class="duration-options" id="durationOptions">
+                <legend>練習時間（單選）</legend>
+                <label><input type="radio" name="durationMinutes" value="2"><span>2 分鐘</span></label>
+                <label><input type="radio" name="durationMinutes" value="3" checked><span>3 分鐘</span></label>
+                <label><input type="radio" name="durationMinutes" value="5"><span>5 分鐘</span></label>
+                <label><input type="radio" name="durationMinutes" value="10"><span>10 分鐘</span></label>
+              </fieldset>
               <button id="startClassBtn">開始練習</button>
               <button class="danger" id="endClassBtn">結束班級並釋放代碼</button>
             </div>
@@ -261,6 +268,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?v=20260916-sound-busy"></script>
+  <script type="module" src="./app.js?v=20260916-duration"></script>
 </body>
 </html>

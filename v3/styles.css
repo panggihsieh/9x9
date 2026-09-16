@@ -793,3 +793,14 @@ button[data-busy="true"] { cursor: wait; opacity: .85; }
 button[data-busy="true"]::before { content: "⌛"; display: inline-block; margin-right: 8px; animation: waiting-hourglass 1.4s ease-in-out infinite; }
 @keyframes waiting-hourglass { 0%, 25% { transform: rotate(0deg); } 75%, 100% { transform: rotate(180deg); } }
 @media (prefers-reduced-motion: reduce) { button[data-busy="true"]::before { animation: none; } }
+.room-head > .room-actions { align-items: center; }
+.duration-options { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0; }
+.duration-options legend { color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+.duration-options label { position: relative; display: flex; cursor: pointer; }
+.duration-options input { position: absolute; opacity: 0; min-width: 0; width: 1px; min-height: 0; height: 1px; }
+.duration-options span { display: flex; align-items: center; gap: 6px; min-height: 48px; padding: 8px 12px; border: 1px solid #375674; border-radius: 12px; background: #132232; color: var(--text); white-space: nowrap; }
+.duration-options span::before { content: '✓'; color: transparent; border: 1px solid currentColor; outline: 1px solid #9fb7cc; border-radius: 3px; width: 18px; height: 18px; line-height: 18px; text-align: center; }
+.duration-options input:checked + span { background: #fff0a0; color: #102030; border-color: #ffd15d; }
+.duration-options input:checked + span::before { color: #102030; outline-color: #102030; }
+.duration-options input:focus-visible + span { outline: 3px solid #50a9ff; outline-offset: 3px; }
+.duration-options:disabled label { cursor: default; opacity: .8; }

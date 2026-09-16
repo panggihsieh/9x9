@@ -101,7 +101,8 @@ service cloud.firestore {
         let changed = request.resource.data.diff(resource.data).affectedKeys();
         return roomOpen(resource.data) && ownsRoom(resource.data)
           && request.resource.data.teacherUid == request.auth.uid
-          && changed.hasOnly(['teacherUid', 'teacherLastSeenAt', 'updatedAt', 'status', 'startedAt'])
+          && changed.hasOnly(['teacherUid', 'teacherLastSeenAt', 'updatedAt', 'status', 'startedAt', 'durationMinutes'])
+          && (!changed.hasAny(['durationMinutes']) || request.resource.data.durationMinutes in [2, 3, 5, 10])
           && request.resource.data.status in ['waiting', 'active']
           && (!changed.hasAny(['teacherLastSeenAt']) || request.resource.data.teacherLastSeenAt == request.time)
           && request.resource.data.updatedAt == request.time;
