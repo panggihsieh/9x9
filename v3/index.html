@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>全班因數大挑戰-卡呼遊戲｜第三版班級測驗</title>
+  <link rel="stylesheet" href="./styles.css?v=20260916-email-priority">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <span>×</span><span>÷</span><span>+</span><span>−</span>
+        </div>
+        <div>
+          <h1>全班因數大挑戰-卡呼遊戲</h1>
+          <p>第三版｜班級代碼測驗</p>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="模式切換">
+        <button class="tab active" data-view="teacher">老師開課</button>
+        <button class="tab" data-view="student">學生登入</button>
+        <button class="tab" data-view="admin">後台管理</button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="view active" id="teacherView">
+        <section class="panel hero-panel teacher-hero">
+          <h2>老師端</h2>
+          <div class="teacher-stat">
+            <span>優先等級</span>
+            <strong id="teacherAuthStatus" aria-live="polite">未登入</strong>
+          </div>
+          <div class="teacher-stat">
+            <span>全站同時上線</span>
+            <strong id="teacherGlobalOnline">讀取中</strong>
+          </div>
+          <form id="teacherIdentityForm" class="teacher-identity">
+            <label>老師 Gmail
+              <input id="teacherGmail" type="email" autocomplete="email" placeholder="teacher@gmail.com" aria-label="老師 Gmail" required>
+            </label>
+            <button type="submit" id="teacherLoginBtn">驗證優先權</button>
+          </form>
+          <form class="join-form" id="teacherForm">
+            <label>
+              班級代碼
+              <input id="teacherCode" maxlength="12" placeholder="例如 MATH24" required>
+            </label>
+            <button type="submit" id="openClassBtn">開啟教室</button>
+          </form>
+          <p id="teacherAccessNote" class="teacher-access-note" role="status">尚未登入</p>
+        </section>
+
+        <section class="panel classroom-panel hidden" id="teacherRoom">
+          <div class="room-head">
+            <div>
+              <span class="eyebrow">班級代碼</span>
+              <strong id="teacherRoomCode">----</strong>
+            </div>
+            <div class="room-actions">
+              <button id="startClassBtn">開始練習</button>
+              <button class="danger" id="endClassBtn">結束班級並清空</button>
+            </div>
+          </div>
+
+          <div class="metrics">
+            <div><span>登入人數</span><strong id="studentCount">0</strong></div>
+            <div><span>目前同時上線</span><strong id="onlineCount">0</strong></div>
+            <div><span>上限</span><strong id="maxStudents">100</strong></div>
+            <div><span>限制狀態</span><strong class="limit-status open" id="limitStatus">✓ 可加入</strong></div>
+            <div><span>狀態</span><strong id="classStatus">等待中</strong></div>
+          </div>
+
+          <div class="dashboard-grid">
+            <section class="dashboard-column">
+              <h3>左｜學生名單</h3>
+              <div class="roster-list" id="studentRoster"></div>
+            </section>
+            <section class="dashboard-column dashboard-column-main">
+              <h3>中｜1・2・3 完成狀態</h3>
+              <div class="task-status-grid">
+                <section class="task-status-column">
+                  <h4>項目 1｜因數</h4>
+                  <div class="task-status-list" id="factorStatusList"></div>
+                </section>
+                <section class="task-status-column">
+                  <h4>項目 2｜因數配對</h4>
+                  <div class="task-status-list" id="pairStatusList"></div>
+                </section>
+                <section class="task-status-column">
+                  <h4>項目 3｜質因數分解</h4>
+                  <div class="task-status-list" id="primeStatusList"></div>
+                </section>
+              </div>
+            </section>
+            <section class="dashboard-column">
+              <h3>右｜前 5 名</h3>
+              <ol class="leaderboard" id="leaderboard"></ol>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="studentView">
+        <section class="panel hero-panel">
+          <div>
+            <h2>學生登入</h2>
+            <p>輸入老師提供的班級代碼與姓名。老師按開始後，會進入個人練習。</p>
+          </div>
+          <form class="join-form" id="studentForm">
+            <label>
+              班級代碼
+              <input id="studentCode" maxlength="12" placeholder="例如 MATH24" required>
+            </label>
+            <label>
+              姓名
+              <input id="studentName" maxlength="18" placeholder="請輸入姓名" required>
+            </label>
+            <button type="submit">加入班級</button>
+          </form>
+        </section>
+
+        <section class="panel lobby-panel hidden" id="studentLobby">
+          <h2 id="lobbyTitle">等待老師開始</h2>
+          <p id="lobbyText">已加入班級，請看老師的大螢幕。</p>
+        </section>
+
+        <section class="practice hidden" id="practiceView">
+          <aside class="number-board" id="numberBoard"></aside>
+          <section class="practice-main">
+            <div class="practice-header">
+              <div class="focus-number-card">
+                <span class="eyebrow">目前測驗數字</span>
+                <strong id="targetNumber">24</strong>
+              </div>
+              <div class="score-card">
+                <span class="eyebrow">分數</span>
+                <strong id="studentScore">0</strong>
+              </div>
+            </div>
+
+            <section class="task-card" data-task="factors">
+              <div class="task-title"><span>1</span><h3>因數</h3></div>
+              <div class="answer-zone" id="factorAnswer">點左側數字收集所有因數</div>
+              <div class="task-actions">
+                <button data-check="factors">確認</button>
+                <button data-clear="factors">清除</button>
+                <small id="factorNote">尚未完成</small>
+              </div>
+            </section>
+
+            <section class="task-card" data-task="pairs">
+              <div class="task-title"><span>2</span><h3>因數配對</h3></div>
+              <div class="answer-zone" id="pairAnswer">每兩個數字形成一組配對</div>
+              <div class="task-actions">
+                <button data-check="pairs">確認</button>
+                <button data-clear="pairs">清除</button>
+                <small id="pairNote">尚未完成</small>
+              </div>
+            </section>
+
+            <section class="task-card" data-task="primes">
+              <div class="task-title"><span>3</span><h3>質因數分解</h3></div>
+              <div class="answer-zone" id="primeAnswer">依序點出質因數</div>
+              <div class="task-actions">
+                <button data-check="primes">確認</button>
+                <button data-clear="primes">清除</button>
+                <small id="primeNote">尚未完成</small>
+              </div>
+            </section>
+
+            <div class="practice-controls">
+              <button id="nextNumberBtn">下一題</button>
+              <p id="practiceFeedback">先完成 1、2、3 三項。</p>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section class="view" id="adminView">
+        <section class="panel hero-panel">
+          <div>
+            <h2>後台管理</h2>
+            <p>admin 管理者</p>
+          </div>
+          <div class="room-actions">
+            <button id="adminLoginBtn" class="google-login-btn"><span aria-hidden="true">G</span>管理者 Google 登入</button>
+            <button type="button" id="teacherLogoutBtn" class="tab hidden">管理者登出</button>
+          </div>
+        </section>
+        <p id="adminStatus" role="status">僅限 admin 登入</p>
+        <section class="panel hidden" id="adminPanel">
+          <h3>權限狀態</h3>
+          <div class="admin-profile">
+            <div><span>Email</span><strong id="adminEmail">尚未登入</strong></div>
+            <div><span>姓名</span><strong id="adminName">--</strong></div>
+            <div><span>身分</span><strong id="adminRole">--</strong></div>
+            <div><span>優先權</span><strong id="adminPriority">--</strong></div>
+          </div>
+
+          <section class="admin-tools hidden" id="superAdminTools">
+            <h3>優先老師維護</h3>
+            <form class="join-form admin-form" id="priorityTeacherForm">
+              <label>
+                老師 Email
+                <input id="priorityTeacherEmail" type="email" placeholder="teacher@gmail.com" required>
+              </label>
+              <label>
+                使用權限
+                <select id="priorityTeacherLevel">
+                  <option value="auth">auth｜核准優先</option>
+                  <option value="guest">guest｜未核准</option>
+                </select>
+              </label>
+              <button type="submit">新增／更新老師</button>
+            </form>
+            <div class="priority-list" id="priorityTeacherList"></div>
+          </section>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <template id="taskStatusRowTemplate">
+    <div class="task-status-row">
+      <strong data-name></strong>
+      <span data-state></span>
+    </div>
+  </template>
+
+  <template id="rosterRowTemplate">
+    <div class="roster-row">
+      <strong data-name></strong>
+      <span data-score></span>
+    </div>
+  </template>
+
+  <script type="module" src="./app.js?v=20260916-email-priority"></script>
+</body>
+</html>

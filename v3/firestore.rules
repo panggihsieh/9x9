@@ -1,0 +1,38 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.email == 'teacher.hsieh@gmail.com';
+    }
+
+    match /classrooms/{code} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
+
+      match /students/{studentId} {
+        allow read: if true;
+        allow create: if request.resource.data.keys().hasOnly([
+          'name', 'sessionId', 'score', 'joinedAt', 'lastSeen', 'onlineAt', 'status', 'tasks', 'currentNumber'
+        ]);
+        allow update: if true;
+        allow delete: if true;
+      }
+    }
+
+    match /admins/{email} {
+      // Teachers look up a single email without signing in; only admin can list or edit.
+      allow get: if true;
+      allow list: if isSuperAdmin();
+      allow write: if isSuperAdmin();
+    }
+  }
+}
