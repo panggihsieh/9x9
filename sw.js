@@ -1,4 +1,4 @@
-const CACHE_NAME = "factor-board-v5";
+const CACHE_NAME = "factor-board-v6";
 const ASSETS = [
   "./",
   "./index.html",

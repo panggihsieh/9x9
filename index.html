@@ -63,6 +63,20 @@
       gap: 18px;
     }
 
+    .home-qr {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: fit-content;
+      margin-top: 14px;
+      color: inherit;
+      text-decoration: none;
+    }
+    .home-qr img { width: 112px; height: 112px; border-radius: 6px; flex-shrink: 0; }
+    .home-qr span { display: grid; gap: 6px; }
+    .home-qr small { color: #9fb7cc; }
+    .home-qr:focus-visible { outline: 3px solid #ffd86a; outline-offset: 5px; }
+
     .logo {
       width: 90px;
       height: 90px;
@@ -665,6 +679,10 @@
             <button type="button" id="quizMode">第二版：遊戲測驗</button>
             <a href="./v3/" style="text-decoration: none; display: inline-flex; align-items: center;">第三版：全班同步比賽</a>
           </div>
+          <a class="home-qr" href="./v3/join-qr.png?v=student" target="_blank" rel="noopener" aria-label="放大第三版學生登入 QR Code">
+            <img src="./v3/join-qr.png?v=student" width="112" height="112" alt="掃描進入第三版學生登入">
+            <span><strong>平板掃碼加入</strong><small>第三版學生登入 · 點圖放大</small></span>
+          </a>
         </div>
       </div>
       <div class="status-panel" aria-live="polite">
