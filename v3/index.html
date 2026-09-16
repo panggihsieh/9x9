@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>因數分解互動板｜第三版班級測驗</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <span>×</span><span>÷</span><span>+</span><span>−</span>
+        </div>
+        <div>
+          <h1>因數分解互動板</h1>
+          <p>第三版｜班級代碼測驗</p>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="模式切換">
+        <button class="tab active" data-view="teacher">老師開課</button>
+        <button class="tab" data-view="student">學生登入</button>
+        <button class="tab" data-view="admin">後台管理</button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="view active" id="teacherView">
+        <section class="panel hero-panel">
+          <div>
+            <h2>老師端</h2>
+            <p>輸入班級代碼即可建立或開啟教室。學生加入後，按下開始練習。</p>
+          </div>
+          <form class="join-form" id="teacherForm">
+            <label>
+              班級代碼
+              <input id="teacherCode" maxlength="12" placeholder="例如 MATH24" required>
+            </label>
+            <button type="submit">開啟教室</button>
+          </form>
+        </section>
+
+        <section class="panel classroom-panel hidden" id="teacherRoom">
+          <div class="room-head">
+            <div>
+              <span class="eyebrow">班級代碼</span>
+              <strong id="teacherRoomCode">----</strong>
+            </div>
+            <div class="room-actions">
+              <button id="startClassBtn">開始練習</button>
+              <button class="danger" id="endClassBtn">結束班級並清空</button>
+            </div>
+          </div>
+
+          <div class="metrics">
+            <div><span>登入人數</span><strong id="studentCount">0</strong></div>
+            <div><span>上限</span><strong id="maxStudents">100</strong></div>
+            <div><span>狀態</span><strong id="classStatus">等待中</strong></div>
+          </div>
+
+          <div class="dashboard-grid">
+            <section>
+              <h3>前 5 名</h3>
+              <ol class="leaderboard" id="leaderboard"></ol>
+            </section>
+            <section>
+              <h3>學生進度</h3>
+              <div class="student-table" id="studentTable"></div>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="studentView">
+        <section class="panel hero-panel">
+          <div>
+            <h2>學生登入</h2>
+            <p>輸入老師提供的班級代碼與姓名。老師按開始後，會進入個人練習。</p>
+          </div>
+          <form class="join-form" id="studentForm">
+            <label>
+              班級代碼
+              <input id="studentCode" maxlength="12" placeholder="例如 MATH24" required>
+            </label>
+            <label>
+              姓名
+              <input id="studentName" maxlength="18" placeholder="請輸入姓名" required>
+            </label>
+            <button type="submit">加入班級</button>
+          </form>
+        </section>
+
+        <section class="panel lobby-panel hidden" id="studentLobby">
+          <h2 id="lobbyTitle">等待老師開始</h2>
+          <p id="lobbyText">已加入班級，請看老師的大螢幕。</p>
+        </section>
+
+        <section class="practice hidden" id="practiceView">
+          <aside class="number-board" id="numberBoard"></aside>
+          <section class="practice-main">
+            <div class="practice-header">
+              <div>
+                <span class="eyebrow">目前題目</span>
+                <strong id="targetNumber">24</strong>
+              </div>
+              <div>
+                <span class="eyebrow">分數</span>
+                <strong id="studentScore">0</strong>
+              </div>
+            </div>
+
+            <section class="task-card" data-task="factors">
+              <div class="task-title"><span>1</span><h3>因數</h3></div>
+              <div class="answer-zone" id="factorAnswer">點左側數字收集所有因數</div>
+              <div class="task-actions">
+                <button data-check="factors">確認</button>
+                <button data-clear="factors">清除</button>
+                <small id="factorNote">尚未完成</small>
+              </div>
+            </section>
+
+            <section class="task-card" data-task="pairs">
+              <div class="task-title"><span>2</span><h3>因數配對</h3></div>
+              <div class="answer-zone" id="pairAnswer">每兩個數字形成一組配對</div>
+              <div class="task-actions">
+                <button data-check="pairs">確認</button>
+                <button data-clear="pairs">清除</button>
+                <small id="pairNote">尚未完成</small>
+              </div>
+            </section>
+
+            <section class="task-card" data-task="primes">
+              <div class="task-title"><span>3</span><h3>質因數分解</h3></div>
+              <div class="answer-zone" id="primeAnswer">依序點出質因數</div>
+              <div class="task-actions">
+                <button data-check="primes">確認</button>
+                <button data-clear="primes">清除</button>
+                <small id="primeNote">尚未完成</small>
+              </div>
+            </section>
+
+            <div class="practice-controls">
+              <button id="nextNumberBtn">下一題</button>
+              <p id="practiceFeedback">先完成 1、2、3 三項。</p>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section class="view" id="adminView">
+        <section class="panel hero-panel">
+          <div>
+            <h2>後台管理</h2>
+            <p>使用老師 email 登入後，可檢查是否具有優先使用權限。</p>
+          </div>
+          <button id="adminLoginBtn">使用 Google 登入</button>
+        </section>
+        <section class="panel hidden" id="adminPanel">
+          <h3>權限狀態</h3>
+          <p id="adminStatus">尚未登入</p>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <template id="studentRowTemplate">
+    <div class="student-row">
+      <strong data-name></strong>
+      <span data-score></span>
+      <span data-task="factors"></span>
+      <span data-task="pairs"></span>
+      <span data-task="primes"></span>
+    </div>
+  </template>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

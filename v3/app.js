@@ -1,0 +1,486 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  GoogleAuthProvider,
+  getAuth,
+  signInWithPopup
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  getFirestore,
+  increment,
+  onSnapshot,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  updateDoc
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+import { classroomSettings, firebaseConfig } from "./firebase-config.js";
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+const els = {
+  tabs: document.querySelectorAll(".tab"),
+  views: {
+    teacher: document.querySelector("#teacherView"),
+    student: document.querySelector("#studentView"),
+    admin: document.querySelector("#adminView")
+  },
+  teacherForm: document.querySelector("#teacherForm"),
+  teacherCode: document.querySelector("#teacherCode"),
+  teacherRoom: document.querySelector("#teacherRoom"),
+  teacherRoomCode: document.querySelector("#teacherRoomCode"),
+  studentCount: document.querySelector("#studentCount"),
+  maxStudents: document.querySelector("#maxStudents"),
+  classStatus: document.querySelector("#classStatus"),
+  leaderboard: document.querySelector("#leaderboard"),
+  studentTable: document.querySelector("#studentTable"),
+  startClassBtn: document.querySelector("#startClassBtn"),
+  endClassBtn: document.querySelector("#endClassBtn"),
+  studentForm: document.querySelector("#studentForm"),
+  studentCode: document.querySelector("#studentCode"),
+  studentName: document.querySelector("#studentName"),
+  studentLobby: document.querySelector("#studentLobby"),
+  lobbyTitle: document.querySelector("#lobbyTitle"),
+  lobbyText: document.querySelector("#lobbyText"),
+  practiceView: document.querySelector("#practiceView"),
+  numberBoard: document.querySelector("#numberBoard"),
+  targetNumber: document.querySelector("#targetNumber"),
+  studentScore: document.querySelector("#studentScore"),
+  factorAnswer: document.querySelector("#factorAnswer"),
+  pairAnswer: document.querySelector("#pairAnswer"),
+  primeAnswer: document.querySelector("#primeAnswer"),
+  factorNote: document.querySelector("#factorNote"),
+  pairNote: document.querySelector("#pairNote"),
+  primeNote: document.querySelector("#primeNote"),
+  nextNumberBtn: document.querySelector("#nextNumberBtn"),
+  practiceFeedback: document.querySelector("#practiceFeedback"),
+  adminLoginBtn: document.querySelector("#adminLoginBtn"),
+  adminPanel: document.querySelector("#adminPanel"),
+  adminStatus: document.querySelector("#adminStatus")
+};
+
+const state = {
+  teacherCode: "",
+  studentCode: "",
+  studentId: localStorage.getItem("factor-v3-student-id") || crypto.randomUUID(),
+  studentName: "",
+  selectedTask: "factors",
+  currentNumber: 24,
+  answers: {
+    factors: [],
+    pairs: [],
+    pairDraft: [],
+    primes: []
+  },
+  score: 0,
+  unsubTeacherRoom: null,
+  unsubTeacherStudents: null,
+  unsubStudentRoom: null,
+  unsubStudentDoc: null
+};
+
+localStorage.setItem("factor-v3-student-id", state.studentId);
+
+function normalizeCode(value) {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
+}
+
+function classroomRef(code) {
+  return doc(db, "classrooms", code);
+}
+
+function studentsRef(code) {
+  return collection(db, "classrooms", code, "students");
+}
+
+function studentRef(code, studentId = state.studentId) {
+  return doc(db, "classrooms", code, "students", studentId);
+}
+
+function switchView(view) {
+  els.tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
+  Object.entries(els.views).forEach(([key, element]) => {
+    element.classList.toggle("active", key === view);
+  });
+}
+
+function factorsOf(n) {
+  const result = [];
+  for (let i = 1; i <= n; i += 1) if (n % i === 0) result.push(i);
+  return result;
+}
+
+function factorPairs(n) {
+  const pairs = [];
+  for (let i = 1; i <= Math.sqrt(n); i += 1) {
+    if (n % i === 0) pairs.push([i, n / i]);
+  }
+  return pairs;
+}
+
+function primeFactorsOf(n) {
+  const result = [];
+  let value = n;
+  let divisor = 2;
+  while (value > 1) {
+    while (value % divisor === 0) {
+      result.push(divisor);
+      value /= divisor;
+    }
+    divisor += divisor === 2 ? 1 : 2;
+  }
+  return result.length ? result : [n];
+}
+
+function sameNumberList(a, b) {
+  if (a.length !== b.length) return false;
+  const left = [...a].sort((x, y) => x - y);
+  const right = [...b].sort((x, y) => x - y);
+  return left.every((value, index) => value === right[index]);
+}
+
+function samePairs(a, b) {
+  if (a.length !== b.length) return false;
+  const normalize = (pairs) => pairs
+    .map(([x, y]) => [Math.min(x, y), Math.max(x, y)].join("x"))
+    .sort();
+  const left = normalize(a);
+  const right = normalize(b);
+  return left.every((value, index) => value === right[index]);
+}
+
+function chooseNumber() {
+  const values = Array.from({ length: 99 }, (_, index) => index + 2)
+    .filter((value) => primeFactorsOf(value).length >= 2);
+  return values[Math.floor(Math.random() * values.length)];
+}
+
+async function openClassroom(code) {
+  const ref = classroomRef(code);
+  const snapshot = await getDoc(ref);
+  if (!snapshot.exists()) {
+    await setDoc(ref, {
+      code,
+      status: "waiting",
+      maxStudents: classroomSettings.maxStudents,
+      studentCount: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  } else {
+    await updateDoc(ref, { updatedAt: serverTimestamp() });
+  }
+}
+
+function subscribeTeacher(code) {
+  state.unsubTeacherRoom?.();
+  state.unsubTeacherStudents?.();
+
+  state.unsubTeacherRoom = onSnapshot(classroomRef(code), (snapshot) => {
+    const room = snapshot.data();
+    els.classStatus.textContent = room?.status === "active" ? "練習中" : "等待中";
+    els.maxStudents.textContent = room?.maxStudents || classroomSettings.maxStudents;
+  });
+
+  state.unsubTeacherStudents = onSnapshot(studentsRef(code), (snapshot) => {
+    const students = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+    renderTeacherDashboard(students);
+  });
+}
+
+function renderTeacherDashboard(students) {
+  els.studentCount.textContent = students.length;
+
+  const top = [...students]
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
+    .slice(0, 5);
+  els.leaderboard.innerHTML = top.length
+    ? top.map((student) => `<li><strong>${escapeHtml(student.name)}</strong> ${student.score || 0} 分</li>`).join("")
+    : "<li>等待學生加入</li>";
+
+  els.studentTable.innerHTML = "";
+  students
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
+    .forEach((student) => {
+      const row = document.querySelector("#studentRowTemplate").content.firstElementChild.cloneNode(true);
+      row.querySelector("[data-name]").textContent = student.name;
+      row.querySelector("[data-score]").textContent = `${student.score || 0} 分`;
+      ["factors", "pairs", "primes"].forEach((task) => {
+        const cell = row.querySelector(`[data-task="${task}"]`);
+        const done = Boolean(student.tasks?.[task]);
+        cell.textContent = done ? "完成" : "進行中";
+        cell.classList.toggle("done", done);
+      });
+      els.studentTable.append(row);
+    });
+}
+
+async function joinStudent(code, name) {
+  state.studentCode = code;
+  state.studentName = name;
+  await runTransaction(db, async (transaction) => {
+    const roomRef = classroomRef(code);
+    const memberRef = studentRef(code);
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) throw new Error("找不到班級代碼");
+
+    const room = roomSnap.data();
+    const memberSnap = await transaction.get(memberRef);
+    const maxStudents = room.maxStudents || classroomSettings.maxStudents;
+    const currentCount = room.studentCount || 0;
+    if (!memberSnap.exists() && currentCount >= maxStudents) {
+      throw new Error("班級人數已滿，無法加入");
+    }
+
+    transaction.set(memberRef, {
+      name,
+      score: memberSnap.exists() ? memberSnap.data().score || 0 : 0,
+      status: "joined",
+      currentNumber: memberSnap.exists() ? memberSnap.data().currentNumber || state.currentNumber : state.currentNumber,
+      tasks: memberSnap.exists() ? memberSnap.data().tasks || { factors: false, pairs: false, primes: false } : { factors: false, pairs: false, primes: false },
+      joinedAt: memberSnap.exists() ? memberSnap.data().joinedAt : serverTimestamp(),
+      lastSeen: serverTimestamp()
+    }, { merge: true });
+
+    if (!memberSnap.exists()) {
+      transaction.update(roomRef, {
+        studentCount: increment(1),
+        updatedAt: serverTimestamp()
+      });
+    }
+  });
+
+  subscribeStudent(code);
+}
+
+function subscribeStudent(code) {
+  state.unsubStudentRoom?.();
+  state.unsubStudentDoc?.();
+
+  state.unsubStudentRoom = onSnapshot(classroomRef(code), (snapshot) => {
+    const room = snapshot.data();
+    if (!room) {
+      showStudentEnded();
+      return;
+    }
+    if (room.status === "active") {
+      els.studentLobby.classList.add("hidden");
+      els.practiceView.classList.remove("hidden");
+    } else {
+      els.studentLobby.classList.remove("hidden");
+      els.practiceView.classList.add("hidden");
+    }
+  });
+
+  state.unsubStudentDoc = onSnapshot(studentRef(code), (snapshot) => {
+    const data = snapshot.data();
+    if (!data) return;
+    state.score = data.score || 0;
+    state.currentNumber = data.currentNumber || state.currentNumber;
+    els.studentScore.textContent = state.score;
+    els.targetNumber.textContent = state.currentNumber;
+  });
+}
+
+function showStudentEnded() {
+  els.practiceView.classList.add("hidden");
+  els.studentLobby.classList.remove("hidden");
+  els.lobbyTitle.textContent = "班級已結束";
+  els.lobbyText.textContent = "老師已清空教室資料。";
+}
+
+function renderNumberBoard() {
+  els.numberBoard.innerHTML = "";
+  for (let i = 1; i <= 100; i += 1) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = i;
+    button.addEventListener("click", () => addAnswer(i));
+    els.numberBoard.append(button);
+  }
+}
+
+function addAnswer(value) {
+  const task = state.selectedTask;
+  if (task === "factors") {
+    if (!state.answers.factors.includes(value)) state.answers.factors.push(value);
+  } else if (task === "pairs") {
+    state.answers.pairDraft.push(value);
+    if (state.answers.pairDraft.length === 2) {
+      state.answers.pairs.push([...state.answers.pairDraft]);
+      state.answers.pairDraft = [];
+    }
+  } else {
+    state.answers.primes.push(value);
+  }
+  renderAnswers();
+}
+
+function renderAnswers() {
+  renderAnswerZone(els.factorAnswer, state.answers.factors);
+  renderAnswerZone(els.pairAnswer, [
+    ...state.answers.pairs.map((pair) => pair.join(" × ")),
+    ...state.answers.pairDraft
+  ]);
+  renderAnswerZone(els.primeAnswer, state.answers.primes);
+}
+
+function renderAnswerZone(zone, values) {
+  zone.innerHTML = "";
+  if (!values.length) {
+    zone.textContent = zone.id === "pairAnswer" ? "每兩個數字形成一組配對" : "點左側數字作答";
+    return;
+  }
+  values.forEach((value) => {
+    const token = document.createElement("span");
+    token.className = "token";
+    token.textContent = value;
+    zone.append(token);
+  });
+}
+
+async function checkStudentTask(task) {
+  const n = state.currentNumber;
+  let correct = false;
+  if (task === "factors") correct = sameNumberList(state.answers.factors, factorsOf(n));
+  if (task === "pairs") correct = state.answers.pairDraft.length === 0 && samePairs(state.answers.pairs, factorPairs(n));
+  if (task === "primes") correct = JSON.stringify(state.answers.primes) === JSON.stringify(primeFactorsOf(n));
+
+  const note = task === "factors" ? els.factorNote : task === "pairs" ? els.pairNote : els.primeNote;
+  if (!correct) {
+    note.textContent = "還不正確，再試一次";
+    note.style.color = "var(--danger)";
+    return;
+  }
+
+  note.textContent = "完成";
+  note.style.color = "var(--green)";
+  await updateDoc(studentRef(state.studentCode), {
+    [`tasks.${task}`]: true,
+    score: increment(task === "pairs" ? 18 : 14),
+    lastSeen: serverTimestamp()
+  });
+  els.practiceFeedback.textContent = "已同步給老師 dashboard。";
+}
+
+function clearStudentTask(task) {
+  if (task === "pairs") {
+    state.answers.pairs = [];
+    state.answers.pairDraft = [];
+  } else {
+    state.answers[task] = [];
+  }
+  renderAnswers();
+}
+
+async function nextNumber() {
+  state.currentNumber = chooseNumber();
+  state.answers = { factors: [], pairs: [], pairDraft: [], primes: [] };
+  [els.factorNote, els.pairNote, els.primeNote].forEach((note) => {
+    note.textContent = "尚未完成";
+    note.style.color = "";
+  });
+  renderAnswers();
+  await updateDoc(studentRef(state.studentCode), {
+    currentNumber: state.currentNumber,
+    tasks: { factors: false, pairs: false, primes: false },
+    lastSeen: serverTimestamp()
+  });
+}
+
+async function endClassroom(code) {
+  const students = await getDocs(studentsRef(code));
+  await Promise.all(students.docs.map((item) => deleteDoc(item.ref)));
+  await deleteDoc(classroomRef(code));
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#039;"
+  }[char]));
+}
+
+els.tabs.forEach((tab) => {
+  tab.addEventListener("click", () => switchView(tab.dataset.view));
+});
+
+els.teacherForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const code = normalizeCode(els.teacherCode.value);
+  if (!code) return;
+  await openClassroom(code);
+  state.teacherCode = code;
+  els.teacherRoomCode.textContent = code;
+  els.teacherRoom.classList.remove("hidden");
+  subscribeTeacher(code);
+});
+
+els.startClassBtn.addEventListener("click", async () => {
+  if (!state.teacherCode) return;
+  await updateDoc(classroomRef(state.teacherCode), {
+    status: "active",
+    startedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+});
+
+els.endClassBtn.addEventListener("click", async () => {
+  if (!state.teacherCode) return;
+  if (!confirm(`確定結束 ${state.teacherCode} 並清空資料？`)) return;
+  await endClassroom(state.teacherCode);
+  els.teacherRoom.classList.add("hidden");
+});
+
+els.studentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await joinStudent(normalizeCode(els.studentCode.value), els.studentName.value.trim());
+    els.studentLobby.classList.remove("hidden");
+  } catch (error) {
+    alert(error.message);
+  }
+});
+
+document.querySelectorAll(".task-card").forEach((card) => {
+  card.addEventListener("click", () => {
+    state.selectedTask = card.dataset.task;
+    document.querySelectorAll(".task-card").forEach((item) => item.classList.remove("selected"));
+    card.classList.add("selected");
+  });
+});
+
+document.querySelectorAll("[data-check]").forEach((button) => {
+  button.addEventListener("click", () => checkStudentTask(button.dataset.check));
+});
+
+document.querySelectorAll("[data-clear]").forEach((button) => {
+  button.addEventListener("click", () => clearStudentTask(button.dataset.clear));
+});
+
+els.nextNumberBtn.addEventListener("click", nextNumber);
+
+els.adminLoginBtn.addEventListener("click", async () => {
+  const provider = new GoogleAuthProvider();
+  const result = await signInWithPopup(auth, provider);
+  const email = result.user.email;
+  const allowedByConfig = classroomSettings.adminEmails.includes(email);
+  const adminDoc = await getDoc(doc(db, "admins", email));
+  const allowedByDb = adminDoc.exists();
+  els.adminPanel.classList.remove("hidden");
+  els.adminStatus.textContent = allowedByConfig || allowedByDb
+    ? `${email} 具有優先使用權限。`
+    : `${email} 尚未列入優先使用名單。`;
+});
+
+renderNumberBoard();
+renderAnswers();

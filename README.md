@@ -22,3 +22,7 @@
 ## Web App
 
 發布到 GitHub Pages 後可作為 PWA 使用。支援加入手機主畫面，並透過 service worker 快取主要檔案。
+
+## 第三版開發分支
+
+第三版班級測驗目前放在 `codex/v3-classroom-firebase` branch 的 `v3/` 目錄，尚未併入 `main`。它使用 Firebase Firestore 做班級代碼、學生登入、老師 dashboard、前 5 名與教室資料清空流程。
