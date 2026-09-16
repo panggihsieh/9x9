@@ -6,11 +6,12 @@ const source = readFileSync(require("node:path").join(__dirname, "../v3/app.js")
 function page(verifyTeacher) {
   let submit;
   const state = { identityRevision: 0, accessReady: false, teacherRegistered: false, globalOnlineCount: 0 };
-  const els = Object.fromEntries(["teacherGlobalOnline", "teacherAuthStatus", "teacherLoginBtn", "openClassBtn", "teacherAccessNote", "teacherPasscode", "teacherGmail"].map((key) => [key, { dataset: {}, value: "" }]));
+  const els = Object.fromEntries(["teacherGlobalOnline", "teacherAuthStatus", "teacherLoginBtn", "openClassBtn", "teacherAccessNote", "teacherPasscode", "teacherGmail"].map((key) => [key, { dataset: {}, value: "", setAttribute(name, value) { this[name] = value; } }]));
   els.teacherGmail.value = "teacher@example.com";
   els.teacherPasscode.value = "0037";
   els.teacherIdentityForm = { addEventListener: (event, fn) => { submit = fn; } };
   const context = vm.createContext({ state, els, verifyTeacher, auth: { currentUser: { uid: "test-uid" } }, classroomSettings: { maxGlobalOnline: 100 }, SUPER_ADMIN_EMAIL: "teacher.hsieh@gmail.com", normalizeEmail: (value) => value.trim().toLowerCase() });
+  vm.runInContext(source.slice(source.indexOf("function setButtonBusy("), source.indexOf('els.teacherForm.addEventListener')), context);
   vm.runInContext(source.slice(source.indexOf("function updateTeacherAccessUi()"), source.indexOf("async function verifyTeacher(")), context);
   vm.runInContext(source.slice(source.indexOf("async function refreshTeacherAccess()"), source.indexOf("async function refreshGlobalOnlineCount()")), context);
   vm.runInContext(source.slice(source.indexOf('els.teacherIdentityForm.addEventListener("submit"'), source.indexOf('els.teacherLogoutBtn.addEventListener')), context);
@@ -47,4 +48,21 @@ test("changing credentials during verification discards the old result", async (
   assert.equal(app.state.accessReady, false);
   assert.equal(app.state.teacherToken, "");
   assert.equal(app.els.openClassBtn.disabled, true);
+});
+
+test("verification shows waiting state, ignores repeat submission, and restores button", async () => {
+  let resolve;
+  let calls = 0;
+  const app = page(() => { calls++; return new Promise(done => { resolve = done; }); });
+  const pending = app.submit();
+  assert.equal(app.els.teacherLoginBtn.dataset.busy, "true");
+  assert.equal(app.els.teacherLoginBtn.disabled, true);
+  assert.equal(app.els.teacherLoginBtn["aria-busy"], "true");
+  await app.submit();
+  assert.equal(calls, 1);
+  resolve({ data: { email: "teacher@example.com", role: "auth", registered: true, token: "ok" } });
+  await pending;
+  assert.equal(app.els.teacherLoginBtn.dataset.busy, undefined);
+  assert.equal(app.els.teacherLoginBtn.disabled, false);
+  assert.equal(app.els.teacherLoginBtn.textContent, "驗證優先權");
 });

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數挑戰｜第三版全班同步比賽</title>
-  <link rel="stylesheet" href="./styles.css?v=20260916-admin-new-tab">
+  <link rel="stylesheet" href="./styles.css?v=20260916-sound-busy">
 </head>
 <body>
   <div class="app">
@@ -28,6 +28,10 @@
         <button class="tab active" data-view="teacher">老師開課</button>
         <button class="tab" data-view="student">學生登入</button>
         <a class="tab admin-tab-link" data-view="admin" href="?view=admin" target="_blank" rel="noopener" aria-label="後台管理（另開新分頁）">後台管理 ↗</a>
+        <div class="sound-controls" role="group" aria-label="本機音效控制">
+          <button class="tab" id="soundToggle" type="button" aria-pressed="true">🔊 音效開</button>
+          <label for="soundVolume">音量 <input id="soundVolume" type="range" min="0" max="100" value="35"></label>
+        </div>
       </nav>
     </header>
 
@@ -257,6 +261,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?v=20260916-admin-new-tab"></script>
+  <script type="module" src="./app.js?v=20260916-sound-busy"></script>
 </body>
 </html>

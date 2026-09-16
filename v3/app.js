@@ -1,3 +1,4 @@
+import { playSound } from "./sound.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
   GoogleAuthProvider,
@@ -332,8 +333,8 @@ function updateTeacherAccessUi() {
     ? state.teacherEmail === SUPER_ADMIN_EMAIL ? "admin" : state.teacherRole : state.teacherVerificationError ? "guest" : "";
   els.teacherAuthStatus.dataset.role = displayRole;
   els.teacherAuthStatus.textContent = { admin: "admin｜最高", auth: "auth｜優先", guest: "guest｜一般" }[displayRole] || "尚未驗證";
-  els.teacherLoginBtn.textContent = "驗證優先權";
-  els.openClassBtn.disabled = !state.accessReady || !state.teacherRegistered;
+  els.teacherLoginBtn.textContent = els.teacherLoginBtn.dataset.busy ? "驗證中…" : "驗證優先權";
+  els.openClassBtn.disabled = Boolean(els.openClassBtn.dataset.busy) || !state.accessReady || !state.teacherRegistered;
   els.teacherAccessNote.textContent = state.teacherVerificationError || (!state.accessReady
     ? "請輸入老師 Gmail 與通行碼驗證身分。"
     : !state.teacherRegistered ? "未列入老師名單，請聯絡 admin 新增。"
@@ -554,6 +555,7 @@ function subscribeStudent(code) {
   state.unsubStudentRoom?.();
   state.unsubStudentDoc?.();
 
+  let wasActive = false;
   state.unsubStudentRoom = onSnapshot(classroomRef(code), (snapshot) => {
     const room = snapshot.data();
     if (!roomIsOpen(room)) {
@@ -566,9 +568,12 @@ function subscribeStudent(code) {
     }
     state.studentSessionId = room.sessionId || state.studentSessionId;
     if (room.status === "active") {
+      if (!wasActive) playSound("start");
+      wasActive = true;
       els.studentLobby.classList.add("hidden");
       els.practiceView.classList.remove("hidden");
     } else {
+      wasActive = false;
       els.studentLobby.classList.remove("hidden");
       els.practiceView.classList.add("hidden");
     }
@@ -685,6 +690,7 @@ async function checkStudentTask(task) {
 
   const note = task === "factors" ? els.factorNote : task === "pairs" ? els.pairNote : els.primeNote;
   if (!correct) {
+    playSound("wrong");
     note.textContent = "還不正確，再試一次";
     note.style.color = "var(--danger)";
     return;
@@ -699,6 +705,7 @@ async function checkStudentTask(task) {
     onlineAt: Date.now(),
     lastSeen: serverTimestamp()
   });
+  playSound("correct");
   els.practiceFeedback.textContent = "已同步給老師 dashboard。";
 }
 
@@ -918,12 +925,21 @@ els.tabs.forEach((tab) => {
   tab.addEventListener("click", () => switchView(tab.dataset.view));
 });
 
+function setButtonBusy(button, busy, label) {
+  if (busy) button.dataset.busy = "true";
+  else delete button.dataset.busy;
+  button.setAttribute("aria-busy", String(busy));
+  button.disabled = busy;
+  button.textContent = label;
+}
+
 els.teacherForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (els.openClassBtn.dataset.busy) return;
   const code = normalizeCode(els.teacherCode.value);
   if (!code) return;
   try {
-    els.openClassBtn.disabled = true;
+    setButtonBusy(els.openClassBtn, true, "開啟中…");
     await ensureTeacherCanOpenClassroom();
     const previousCode = state.teacherCode;
     const previousSessionId = state.teacherSessionId;
@@ -940,7 +956,8 @@ els.teacherForm.addEventListener("submit", async (event) => {
   } catch (error) {
     els.teacherAccessNote.textContent = error.message;
   } finally {
-    els.openClassBtn.disabled = !state.accessReady || !state.teacherRegistered;
+    setButtonBusy(els.openClassBtn, false, "開啟教室");
+    els.openClassBtn.disabled = Boolean(els.openClassBtn.dataset.busy) || !state.accessReady || !state.teacherRegistered;
   }
 });
 
@@ -948,6 +965,7 @@ els.startClassBtn.addEventListener("click", async () => {
   if (!state.teacherCode) return;
   try {
     await updateCurrentRoom(state.teacherCode, state.teacherSessionId, { status: "active", startedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    playSound("start");
   } catch (error) { els.teacherAccessNote.textContent = error.message; }
 });
 
@@ -1009,7 +1027,8 @@ els.teacherPasscode.addEventListener("input", resetTeacherVerification);
 
 els.teacherIdentityForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  els.teacherLoginBtn.disabled = true;
+  if (els.teacherLoginBtn.dataset.busy) return;
+  setButtonBusy(els.teacherLoginBtn, true, "驗證中…");
   resetTeacherVerification();
   const revision = state.identityRevision;
   try {
@@ -1020,7 +1039,7 @@ els.teacherIdentityForm.addEventListener("submit", async (event) => {
     state.teacherVerificationError = `guest｜驗證未通過，無法取得優先等級。${error.message}`;
     updateTeacherAccessUi();
   } finally {
-    els.teacherLoginBtn.disabled = false;
+    setButtonBusy(els.teacherLoginBtn, false, "驗證優先權");
   }
 });
 
