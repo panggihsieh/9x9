@@ -1,0 +1,5 @@
+{
+  "firestore": {
+    "rules": "v3/firestore.rules"
+  }
+}
