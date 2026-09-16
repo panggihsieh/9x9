@@ -156,7 +156,7 @@ for (const [input, key] of [
 ]) {
   try {
     const saved = localStorage.getItem(key);
-    if (saved !== null) input.value = saved;
+    if (saved?.trim()) input.value = saved.trim();
   } catch { /* 瀏覽器禁止儲存時，仍可手動輸入。 */ }
   input.addEventListener("input", () => {
     try { localStorage.setItem(key, input.value.trim()); } catch {}
