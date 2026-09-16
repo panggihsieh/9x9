@@ -40,7 +40,11 @@ const els = {
   classStatus: document.querySelector("#classStatus"),
   leaderboard: document.querySelector("#leaderboard"),
   studentRoster: document.querySelector("#studentRoster"),
-  studentTable: document.querySelector("#studentTable"),
+  taskStatusLists: {
+    factors: document.querySelector("#factorStatusList"),
+    pairs: document.querySelector("#pairStatusList"),
+    primes: document.querySelector("#primeStatusList")
+  },
   startClassBtn: document.querySelector("#startClassBtn"),
   endClassBtn: document.querySelector("#endClassBtn"),
   studentForm: document.querySelector("#studentForm"),
@@ -206,7 +210,7 @@ function renderTeacherDashboard(students) {
     : "<li>等待學生加入</li>";
 
   els.studentRoster.innerHTML = "";
-  els.studentTable.innerHTML = "";
+  Object.values(els.taskStatusLists).forEach((list) => list.innerHTML = "");
   students
     .sort((a, b) => (b.score || 0) - (a.score || 0))
     .forEach((student) => {
@@ -215,16 +219,16 @@ function renderTeacherDashboard(students) {
       rosterRow.querySelector("[data-score]").textContent = `${student.score || 0} 分`;
       els.studentRoster.append(rosterRow);
 
-      const row = document.querySelector("#studentRowTemplate").content.firstElementChild.cloneNode(true);
-      row.querySelector("[data-name]").textContent = student.name;
-      row.querySelector("[data-score]").textContent = `${student.score || 0} 分`;
       ["factors", "pairs", "primes"].forEach((task) => {
-        const cell = row.querySelector(`[data-task="${task}"]`);
+        const row = document.querySelector("#taskStatusRowTemplate").content.firstElementChild.cloneNode(true);
         const done = Boolean(student.tasks?.[task]);
-        cell.textContent = done ? "完成" : "進行中";
-        cell.classList.toggle("done", done);
+        row.querySelector("[data-name]").textContent = student.name;
+        const stateCell = row.querySelector("[data-state]");
+        stateCell.textContent = done ? "完成" : "進行中";
+        stateCell.classList.toggle("done", done);
+        stateCell.classList.toggle("working", !done);
+        els.taskStatusLists[task].append(row);
       });
-      els.studentTable.append(row);
     });
 }
 

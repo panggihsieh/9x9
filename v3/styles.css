@@ -291,7 +291,7 @@ input {
 
 .leaderboard li,
 .roster-row,
-.student-row {
+.task-status-row {
   border: 1px solid #294055;
   border-radius: 10px;
   background: #0d1722;
@@ -299,7 +299,7 @@ input {
 }
 
 .roster-list,
-.student-table {
+.task-status-list {
   display: grid;
   gap: 8px;
 }
@@ -316,20 +316,44 @@ input {
   font-weight: 900;
 }
 
-.student-row {
+.task-status-grid {
   display: grid;
-  grid-template-columns: minmax(110px, 1fr) 70px repeat(3, minmax(62px, 76px));
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.task-status-column {
+  min-height: 280px;
+  border: 1px solid #294055;
+  border-radius: 12px;
+  background: rgba(13, 23, 34, .66);
+  padding: 12px;
+}
+
+.task-status-column h4 {
+  margin: 0 0 10px;
+  color: #dff0ff;
+  font-size: 17px;
+}
+
+.task-status-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: 8px;
   align-items: center;
 }
 
-.student-row span {
+.task-status-row span {
   color: var(--muted);
   font-weight: 800;
 }
 
-.student-row .done {
+.task-status-row .done {
   color: var(--green);
+}
+
+.task-status-row .working {
+  color: #9dd0ff;
 }
 
 .practice {

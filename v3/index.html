@@ -66,7 +66,20 @@
             </section>
             <section class="dashboard-column dashboard-column-main">
               <h3>中｜1・2・3 完成狀態</h3>
-              <div class="student-table" id="studentTable"></div>
+              <div class="task-status-grid">
+                <section class="task-status-column">
+                  <h4>項目 1｜因數</h4>
+                  <div class="task-status-list" id="factorStatusList"></div>
+                </section>
+                <section class="task-status-column">
+                  <h4>項目 2｜因數配對</h4>
+                  <div class="task-status-list" id="pairStatusList"></div>
+                </section>
+                <section class="task-status-column">
+                  <h4>項目 3｜質因數分解</h4>
+                  <div class="task-status-list" id="primeStatusList"></div>
+                </section>
+              </div>
             </section>
             <section class="dashboard-column">
               <h3>右｜前 5 名</h3>
@@ -168,13 +181,10 @@
     </main>
   </div>
 
-  <template id="studentRowTemplate">
-    <div class="student-row">
+  <template id="taskStatusRowTemplate">
+    <div class="task-status-row">
       <strong data-name></strong>
-      <span data-score></span>
-      <span data-task="factors"></span>
-      <span data-task="pairs"></span>
-      <span data-task="primes"></span>
+      <span data-state></span>
     </div>
   </template>
 
