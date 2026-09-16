@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數挑戰｜第三版班級測驗</title>
-  <link rel="stylesheet" href="./styles.css?v=20260916-inline-steps">
+  <link rel="stylesheet" href="./styles.css?v=20260916-classroom-lifecycle">
 </head>
 <body>
   <div class="app">
@@ -70,7 +70,7 @@
             </div>
             <div class="room-actions">
               <button id="startClassBtn">開始練習</button>
-              <button class="danger" id="endClassBtn">結束班級並清空</button>
+              <button class="danger" id="endClassBtn">結束班級並釋放代碼</button>
             </div>
           </div>
 
@@ -231,6 +231,12 @@
             </form>
             <p id="passcodeHelp">通行碼為 4 位數字（可含前導零）；更新通行碼或權限後，老師須重新驗證。請將設定的通行碼提供給老師。</p>
             <div class="priority-list" id="priorityTeacherList"></div>
+            <div class="room-head classroom-management-heading">
+              <h3>班級代碼管理</h3>
+              <button type="button" id="refreshClassroomsBtn">重新整理班級</button>
+            </div>
+            <p>老師與學生皆無活動滿 5 分鐘，可重新使用代碼。舊版班級需由 admin 釋放；釋放會結束課堂並保留答題資料。</p>
+            <div class="priority-list" id="adminClassroomList"></div>
           </section>
         </section>
       </section>
@@ -251,6 +257,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?v=20260916-tablet-login"></script>
+  <script type="module" src="./app.js?v=20260916-classroom-lifecycle"></script>
 </body>
 </html>

@@ -26,6 +26,6 @@
 
 ## 第三版班級測驗
 
-第三版已合併至 `main`，程式位於 `v3/`，使用 Firebase Authentication 與 Firestore 提供 Gmail 加通行碼驗證、老師優先權、班級代碼、學生登入、老師監控面板、前 5 名與教室資料清空流程。設定與本機執行方式請見 [第三版說明](v3/README.md)。
+第三版已合併至 `main`，程式位於 `v3/`，使用 Firebase Authentication 與 Firestore 提供 Gmail 加通行碼驗證、老師優先權、班級代碼、學生登入、老師監控面板、前 5 名與班級閒置釋放與歷史資料保留流程。設定與本機執行方式請見 [第三版說明](v3/README.md)。
 
 [完整版首頁](https://x9-factor-game.web.app/) 提供第一版、第二版、第三版入口。Firebase Hosting 發布專案根目錄，第一、二版位於 `index.html`，第三版位於 `v3/`。

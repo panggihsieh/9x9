@@ -21,7 +21,7 @@ service cloud.firestore {
         && g.role in ['admin', 'auth', 'guest', 'priorityTeacher'] && s.role == roleFor(s.email, g);
     }
     function ownsRoom(room) {
-      return validSession() && (room.teacherEmail == session().email || session().role == 'admin');
+      return validSession() && (room.get('teacherEmail', '') == session().email || session().role == 'admin');
     }
     function teacherFields(data) {
       let s = session();
@@ -73,21 +73,77 @@ service cloud.firestore {
       allow get, delete: if signedIn() && uid == request.auth.uid;
       allow list: if false;
     }
+    function roomOpen(room) { return room.status in ['waiting', 'active']; }
+    function reclaimable(room) {
+      return room.status == 'released' || (room.get('teacherEmail', '') != ''
+        && room.get('teacherLastSeenAt', request.time) + duration.value(5, 'm') <= request.time
+        && room.get('lastStudentSeenAt', room.updatedAt) + duration.value(5, 'm') <= request.time);
+    }
     match /classrooms/{code} {
+      function archived() {
+        let oldId = resource.data.get('sessionId', 'legacy');
+        return getAfter(/databases/$(database)/documents/classrooms/$(code)/sessions/$(oldId)).data == resource.data;
+      }
+      function freshRoom() {
+        let d = request.resource.data;
+        return teacherFields(d) && d.status == 'waiting' && d.studentCount == 0
+          && d.code == code && d.sessionId is string && d.sessionId.size() > 0
+          && d.teacherLastSeenAt == request.time && d.lastStudentSeenAt == request.time
+          && d.createdAt == request.time && d.updatedAt == request.time;
+      }
+      function release() {
+        return (isSuperAdmin() || ownsRoom(resource.data) || (roomOpen(resource.data) && reclaimable(resource.data)))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'releasedAt', 'updatedAt'])
+          && request.resource.data.status == 'released' && request.resource.data.releasedAt == request.time
+          && request.resource.data.updatedAt == request.time;
+      }
+      function maintain() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return roomOpen(resource.data) && ownsRoom(resource.data)
+          && request.resource.data.teacherUid == request.auth.uid
+          && changed.hasOnly(['teacherUid', 'teacherLastSeenAt', 'updatedAt', 'status', 'startedAt'])
+          && request.resource.data.status in ['waiting', 'active']
+          && (!changed.hasAny(['teacherLastSeenAt']) || request.resource.data.teacherLastSeenAt == request.time)
+          && request.resource.data.updatedAt == request.time;
+      }
+      function studentHeartbeat() {
+        let d = request.resource.data;
+        let changed = d.diff(resource.data).affectedKeys();
+        let student = getAfter(/databases/$(database)/documents/classrooms/$(code)/students/$(d.studentHeartbeatId)).data;
+        return roomOpen(resource.data) && changed.hasOnly(['studentCount', 'updatedAt', 'lastStudentSeenAt', 'studentHeartbeatId'])
+          && d.lastStudentSeenAt == request.time && student.lastSeen == request.time
+          && student.sessionId == resource.data.sessionId
+          && (d.studentCount == resource.data.studentCount || d.studentCount == resource.data.studentCount + 1)
+          && d.studentCount <= resource.data.maxStudents;
+      }
       allow read: if true;
-      allow create: if validSession() && teacherFields(request.resource.data);
-      allow update: if (ownsRoom(resource.data) && teacherFields(request.resource.data))
-        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentCount', 'updatedAt'])
-          && request.resource.data.studentCount == resource.data.studentCount + 1
-          && request.resource.data.studentCount <= resource.data.maxStudents && request.resource.data.updatedAt == request.time);
-      allow delete: if ownsRoom(resource.data);
-      match /students/{studentId} {
+      allow create: if validSession() && freshRoom();
+      allow update: if release() || maintain()
+        || (validSession() && reclaimable(resource.data) && freshRoom()
+          && request.resource.data.sessionId != resource.data.get('sessionId', '') && archived())
+        || studentHeartbeat();
+      // Releasing preserves previous sessions and answers instead of deleting data.
+      allow delete: if false;
+      match /sessions/{sessionId} {
         allow read: if true;
-        allow create: if request.resource.data.keys().hasOnly([
+        allow create: if validSession()
+          && sessionId == get(/databases/$(database)/documents/classrooms/$(code)).data.get('sessionId', 'legacy')
+          && request.resource.data == get(/databases/$(database)/documents/classrooms/$(code)).data
+          && reclaimable(request.resource.data);
+        allow update, delete: if false;
+      }
+      match /students/{studentId} {
+        function currentStudent() {
+          let room = get(/databases/$(database)/documents/classrooms/$(code)).data;
+          return roomOpen(room) && request.resource.data.sessionId == room.sessionId
+            && request.resource.data.lastSeen == request.time;
+        }
+        allow read: if true;
+        allow create: if currentStudent() && request.resource.data.keys().hasOnly([
           'name', 'sessionId', 'score', 'joinedAt', 'lastSeen', 'onlineAt', 'status', 'tasks', 'currentNumber'
         ]);
-        allow update: if true;
-        allow delete: if ownsRoom(get(/databases/$(database)/documents/classrooms/$(code)).data);
+        allow update: if currentStudent() && resource.data.sessionId == request.resource.data.sessionId;
+        allow delete: if false;
       }
     }
   }

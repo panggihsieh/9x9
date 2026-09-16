@@ -25,6 +25,8 @@ import {
 import { classroomSettings, firebaseConfig } from "./firebase-config.js";
 import { SUPER_ADMIN_EMAIL, resolveTeacherAccess } from "./teacher-access.js?v=20260916-firestore-pin";
 
+import { canReclaimRoom, roomIsOpen, timestampMillis } from "./room-lifecycle.mjs";
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
@@ -97,7 +99,9 @@ const els = {
   priorityTeacherEmail: document.querySelector("#priorityTeacherEmail"),
   priorityTeacherLevel: document.querySelector("#priorityTeacherLevel"),
   priorityTeacherPasscode: document.querySelector("#priorityTeacherPasscode"),
-  priorityTeacherList: document.querySelector("#priorityTeacherList")
+  priorityTeacherList: document.querySelector("#priorityTeacherList"),
+  adminClassroomList: document.querySelector("#adminClassroomList"),
+  refreshClassroomsBtn: document.querySelector("#refreshClassroomsBtn")
 };
 
 const state = {
@@ -138,6 +142,7 @@ const state = {
   unsubStudentRoom: null,
   unsubStudentDoc: null,
   teacherRefreshTimer: null,
+  teacherHeartbeatTimer: null,
   presenceTimer: null
 };
 
@@ -159,8 +164,8 @@ function studentsRef(code) {
   return collection(db, "classrooms", code, "students");
 }
 
-function studentRef(code, studentId = state.studentId) {
-  return doc(db, "classrooms", code, "students", studentId);
+function studentRef(code, studentId = state.studentId, sessionId = state.studentSessionId) {
+  return doc(db, "classrooms", code, "students", sessionId ? `${sessionId}_${studentId}` : studentId);
 }
 
 function switchView(view) {
@@ -223,43 +228,52 @@ function chooseNumber() {
 }
 
 async function openClassroom(code) {
-  const ref = classroomRef(code);
-  const snapshot = await getDoc(ref);
-  if (snapshot.exists() && snapshot.data().teacherEmail !== state.teacherEmail
-      && !state.adminAccess) {
-    throw new Error("這個班級代碼已由其他老師使用，請換一個代碼。");
-  }
-  const sessionId = crypto.randomUUID();
+  const sessionId = await runTransaction(db, async (tx) => {
+    const ref = classroomRef(code);
+    const snapshot = await tx.get(ref);
+    const room = snapshot.data();
+    if (room && room.teacherEmail === state.teacherEmail && roomIsOpen(room)) {
+      tx.update(ref, { teacherUid: auth.currentUser.uid, teacherLastSeenAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      return room.sessionId;
+    }
+    if (room && !canReclaimRoom(room)) {
+      throw new Error(!room.teacherEmail
+        ? "這是舊版保留的班級代碼，請 admin 在後台釋放。"
+        : "此班級仍有老師或學生近期活動；雙方離線滿 5 分鐘後可重新使用，或請 admin 釋放。");
+    }
+    if (room) tx.set(doc(db, "classrooms", code, "sessions", room.sessionId || "legacy"), room);
+    const nextSessionId = crypto.randomUUID();
+    tx.set(ref, { code, sessionId: nextSessionId, teacherUid: auth.currentUser.uid,
+      teacherEmail: state.teacherEmail, teacherRole: state.teacherRole, teacherHasPriority: state.teacherHasPriority,
+      status: "waiting", maxStudents: classroomSettings.maxStudents, studentCount: 0,
+      teacherLastSeenAt: serverTimestamp(), lastStudentSeenAt: serverTimestamp(),
+      createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    return nextSessionId;
+  });
   state.teacherSessionId = sessionId;
-  await clearClassroomStudents(code);
-  if (!snapshot.exists()) {
-    await setDoc(ref, {
-      code,
-      sessionId,
-      teacherUid: auth.currentUser.uid,
-      teacherEmail: state.teacherEmail,
-      teacherRole: state.teacherRole,
-      teacherHasPriority: state.teacherHasPriority,
-      status: "waiting",
-      maxStudents: classroomSettings.maxStudents,
-      studentCount: 0,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-  } else {
-    await updateDoc(ref, {
-      sessionId,
-      teacherUid: auth.currentUser.uid,
-      teacherEmail: state.teacherEmail,
-      teacherRole: state.teacherRole,
-      teacherHasPriority: state.teacherHasPriority,
-      status: "waiting",
-      maxStudents: classroomSettings.maxStudents,
-      studentCount: 0,
-      startedAt: null,
-      updatedAt: serverTimestamp()
-    });
-  }
+}
+
+async function updateCurrentRoom(code, sessionId, changes) {
+  await runTransaction(db, async (tx) => {
+    const ref = classroomRef(code);
+    const snapshot = await tx.get(ref);
+    const room = snapshot.data();
+    if (!roomIsOpen(room) || room.sessionId !== sessionId) throw new Error("此課堂已結束或代碼已重新使用。");
+    tx.update(ref, changes);
+  });
+}
+
+function startTeacherHeartbeat(code) {
+  clearInterval(state.teacherHeartbeatTimer);
+  const sessionId = state.teacherSessionId;
+  const heartbeat = () => updateCurrentRoom(code, sessionId, {
+    teacherLastSeenAt: serverTimestamp(), updatedAt: serverTimestamp()
+  }).catch(() => {
+    clearInterval(state.teacherHeartbeatTimer);
+    els.teacherAccessNote.textContent = "老師連線回報失敗，請重新驗證並開啟原班級。";
+  });
+  heartbeat();
+  state.teacherHeartbeatTimer = setInterval(heartbeat, PRESENCE_INTERVAL_MS);
 }
 
 function subscribeTeacher(code) {
@@ -269,7 +283,13 @@ function subscribeTeacher(code) {
 
   state.unsubTeacherRoom = onSnapshot(classroomRef(code), (snapshot) => {
     const room = snapshot.data();
-    state.teacherSessionId = room?.sessionId || state.teacherSessionId;
+    if (!roomIsOpen(room) || room.sessionId !== state.teacherSessionId) {
+      stopTeacherSubscription();
+      els.teacherRoom.classList.add("hidden");
+      state.teacherCode = "";
+      els.teacherAccessNote.textContent = "此課堂已釋放或代碼已重新使用，請重新開課。";
+      return;
+    }
     state.teacherMaxStudents = room?.maxStudents || classroomSettings.maxStudents;
     els.classStatus.textContent = room?.status === "active" ? "練習中" : "等待中";
     els.maxStudents.textContent = state.teacherMaxStudents;
@@ -289,6 +309,8 @@ function subscribeTeacher(code) {
 }
 
 function stopTeacherSubscription() {
+  clearInterval(state.teacherHeartbeatTimer);
+  state.teacherHeartbeatTimer = null;
   state.unsubTeacherRoom?.();
   state.unsubTeacherStudents?.();
   clearInterval(state.teacherRefreshTimer);
@@ -400,6 +422,18 @@ async function refreshTeacherAccess() {
 
 async function refreshGlobalOnlineCount() {
   const rooms = await getDocs(collection(db, "classrooms"));
+  await Promise.all(rooms.docs.filter((item) => roomIsOpen(item.data()) && canReclaimRoom(item.data())).map(async (item) => {
+    try {
+      await runTransaction(db, async (tx) => {
+        const latest = (await tx.get(item.ref)).data();
+        if (!roomIsOpen(latest) || !canReclaimRoom(latest)) return;
+        tx.update(item.ref, { status: "released", releasedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      });
+    } catch (error) {
+      // Server rules take precedence over the browser clock and concurrent activity.
+      if (error.code !== "permission-denied") console.warn("閒置教室檢查暫時失敗", error.code);
+    }
+  }));
   const counts = await Promise.all(rooms.docs.map(async (room) => {
     const members = await getDocs(studentsRef(room.id));
     return members.docs.filter((member) => member.data().sessionId === room.data().sessionId
@@ -422,7 +456,7 @@ async function ensureTeacherCanOpenClassroom() {
 
 async function ensureStudentCanJoinClassroom(code) {
   const roomSnapshot = await getDoc(classroomRef(code));
-  if (!roomSnapshot.exists()) throw new Error("找不到班級代碼");
+  if (!roomSnapshot.exists() || !roomIsOpen(roomSnapshot.data())) throw new Error("找不到開放中的班級，請向老師確認代碼。");
   const room = roomSnapshot.data();
   const onlineCount = await refreshGlobalOnlineCount();
   const onlineLimit = classroomSettings.maxGlobalOnline || classroomSettings.maxStudents;
@@ -477,11 +511,11 @@ async function joinStudent(code, name) {
   let joinedSessionId = "";
   await runTransaction(db, async (transaction) => {
     const roomRef = classroomRef(code);
-    const memberRef = studentRef(code);
     const roomSnap = await transaction.get(roomRef);
-    if (!roomSnap.exists()) throw new Error("找不到班級代碼");
+    if (!roomSnap.exists() || !roomIsOpen(roomSnap.data())) throw new Error("班級已結束，請向老師確認代碼。");
 
     const room = roomSnap.data();
+    const memberRef = studentRef(code, state.studentId, room.sessionId);
     const memberSnap = await transaction.get(memberRef);
     const existingStudent = memberSnap.exists() ? memberSnap.data() : null;
     const sessionId = room.sessionId || "";
@@ -505,12 +539,10 @@ async function joinStudent(code, name) {
       lastSeen: serverTimestamp()
     }, { merge: true });
 
-    if (!alreadyInSession) {
-      transaction.update(roomRef, {
-        studentCount: increment(1),
-        updatedAt: serverTimestamp()
-      });
-    }
+    transaction.update(roomRef, {
+      ...(alreadyInSession ? {} : { studentCount: increment(1) }),
+      lastStudentSeenAt: serverTimestamp(), studentHeartbeatId: memberRef.id, updatedAt: serverTimestamp()
+    });
   });
 
   state.studentSessionId = joinedSessionId;
@@ -524,7 +556,7 @@ function subscribeStudent(code) {
 
   state.unsubStudentRoom = onSnapshot(classroomRef(code), (snapshot) => {
     const room = snapshot.data();
-    if (!room) {
+    if (!roomIsOpen(room)) {
       showStudentEnded();
       return;
     }
@@ -556,10 +588,15 @@ function startPresence() {
   stopPresence();
   const updatePresence = () => {
     if (!state.studentCode || !state.studentSessionId) return;
-    updateDoc(studentRef(state.studentCode), {
-      sessionId: state.studentSessionId,
-      onlineAt: Date.now(),
-      lastSeen: serverTimestamp()
+    const code = state.studentCode;
+    const sessionId = state.studentSessionId;
+    const memberRef = studentRef(code, state.studentId, sessionId);
+    runTransaction(db, async (tx) => {
+      const ref = classroomRef(code);
+      const room = (await tx.get(ref)).data();
+      if (!roomIsOpen(room) || room.sessionId !== sessionId) return;
+      tx.update(memberRef, { onlineAt: Date.now(), lastSeen: serverTimestamp() });
+      tx.update(ref, { lastStudentSeenAt: serverTimestamp(), studentHeartbeatId: memberRef.id });
     }).catch(() => {});
   };
   updatePresence();
@@ -577,7 +614,7 @@ function showStudentEnded() {
   els.practiceView.classList.add("hidden");
   els.studentLobby.classList.remove("hidden");
   els.lobbyTitle.textContent = "班級已結束";
-  els.lobbyText.textContent = "老師已清空教室資料。";
+  els.lobbyText.textContent = "本次課堂已結束，請向老師確認新的班級代碼。";
 }
 
 function renderNumberBoard() {
@@ -693,14 +730,62 @@ async function nextNumber() {
   });
 }
 
-async function clearClassroomStudents(code) {
-  const students = await getDocs(studentsRef(code));
-  await Promise.all(students.docs.map((item) => deleteDoc(item.ref)));
+async function endClassroom(code, sessionId = state.teacherSessionId) {
+  await updateCurrentRoom(code, sessionId, {
+    status: "released", releasedAt: serverTimestamp(), updatedAt: serverTimestamp()
+  });
 }
 
-async function endClassroom(code) {
-  await clearClassroomStudents(code);
-  await deleteDoc(classroomRef(code));
+async function loadAdminClassrooms() {
+  if (!state.adminAccess) return;
+  els.refreshClassroomsBtn.disabled = true;
+  try {
+    const rooms = await getDocs(collection(db, "classrooms"));
+    const entries = await Promise.all(rooms.docs.map(async (item) => {
+      const room = item.data();
+      const members = await getDocs(studentsRef(item.id));
+      const online = members.docs.filter((member) => member.data().sessionId === room.sessionId && isStudentOnline(member.data())).length;
+      return { code: item.id, room, online };
+    }));
+    if (!state.adminAccess) return;
+    els.adminClassroomList.replaceChildren();
+    for (const { code, room, online } of entries.sort((a, b) => a.code.localeCompare(b.code))) {
+      const row = document.createElement("div");
+      row.className = "priority-row";
+      const info = document.createElement("div");
+      const title = document.createElement("strong");
+      const teacherOnline = Date.now() - timestampMillis(room.teacherLastSeenAt) <= ONLINE_WINDOW_MS;
+      title.textContent = `${code}｜${room.status === "released" ? "已釋放" : teacherOnline || online ? "在線" : canReclaimRoom(room) ? "閒置已到期" : "閒置／保留中"}`;
+      const detail = document.createElement("small");
+      const lastSeen = Math.max(timestampMillis(room.teacherLastSeenAt), timestampMillis(room.lastStudentSeenAt), timestampMillis(room.updatedAt));
+      detail.textContent = `${room.teacherEmail || "舊版：無老師 Email"}｜老師${teacherOnline ? "在線" : "離線"}｜在線學生 ${online} 人｜最後活動 ${lastSeen ? new Date(lastSeen).toLocaleString("zh-TW") : "未知"}`;
+      info.append(title, detail);
+      const release = document.createElement("button");
+      release.type = "button";
+      release.className = "danger";
+      release.textContent = "釋放班級代碼";
+      release.disabled = room.status === "released";
+      release.addEventListener("click", async () => {
+        if (!confirm(`釋放 ${code}？這會結束該課堂，保留既有答題資料。畫面載入時有 ${online} 位學生在線。`)) return;
+        release.disabled = true;
+        try {
+          await runTransaction(db, async (tx) => {
+            const ref = classroomRef(code);
+            const latest = (await tx.get(ref)).data();
+            if (!latest || latest.sessionId !== room.sessionId || timestampMillis(latest.createdAt) !== timestampMillis(room.createdAt)) {
+              throw new Error("課堂已變更，請重新整理列表後再操作。");
+            }
+            tx.update(ref, { status: "released", releasedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          });
+          await loadAdminClassrooms();
+        } catch (error) { els.adminStatus.textContent = error.message; release.disabled = false; }
+      });
+      row.append(info, release);
+      els.adminClassroomList.append(row);
+    }
+    if (!entries.length) els.adminClassroomList.textContent = "目前沒有班級紀錄。";
+  } catch (error) { els.adminStatus.textContent = error.message; }
+  finally { els.refreshClassroomsBtn.disabled = false; }
 }
 
 function escapeHtml(value) {
@@ -803,6 +888,7 @@ function stopAccessSubscriptions() {
   state.unsubTeacherGrants = null;
   state.teacherGrants = [];
   els.priorityTeacherList.replaceChildren();
+  els.adminClassroomList.replaceChildren();
   els.superAdminTools.classList.add("hidden");
 }
 
@@ -817,12 +903,15 @@ function handleAdminAuth(user) {
   els.adminLoginBtn.classList.toggle("hidden", state.adminAccess);
   els.teacherLogoutBtn.classList.toggle("hidden", !state.adminAccess);
   if (!state.adminAccess) return;
+  loadAdminClassrooms();
   state.unsubTeacherGrants = onSnapshot(collection(db, "admins"), (snapshot) => {
     if (revision !== state.authRevision) return;
     state.teacherGrants = snapshot.docs.map((item) => ({ ...item.data(), id: item.id }));
     renderPriorityTeachers();
   }, showAdminError);
 }
+
+els.refreshClassroomsBtn.addEventListener("click", loadAdminClassrooms);
 
 els.tabs.forEach((tab) => {
   tab.addEventListener("click", () => switchView(tab.dataset.view));
@@ -836,8 +925,9 @@ els.teacherForm.addEventListener("submit", async (event) => {
     els.openClassBtn.disabled = true;
     await ensureTeacherCanOpenClassroom();
     const previousCode = state.teacherCode;
+    const previousSessionId = state.teacherSessionId;
     await openClassroom(code);
-    if (previousCode && previousCode !== code) await endClassroom(previousCode);
+    if (previousCode && previousCode !== code) await endClassroom(previousCode, previousSessionId);
     stopTeacherSubscription();
     state.teacherCode = code;
     els.teacherRoomCode.textContent = code;
@@ -845,6 +935,7 @@ els.teacherForm.addEventListener("submit", async (event) => {
     els.classStatus.textContent = "等待中";
     renderTeacherDashboard([]);
     subscribeTeacher(code);
+    startTeacherHeartbeat(code);
   } catch (error) {
     els.teacherAccessNote.textContent = error.message;
   } finally {
@@ -855,12 +946,12 @@ els.teacherForm.addEventListener("submit", async (event) => {
 els.startClassBtn.addEventListener("click", async () => {
   if (!state.teacherCode) return;
   try {
-    await updateDoc(classroomRef(state.teacherCode), { status: "active", startedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    await updateCurrentRoom(state.teacherCode, state.teacherSessionId, { status: "active", startedAt: serverTimestamp(), updatedAt: serverTimestamp() });
   } catch (error) { els.teacherAccessNote.textContent = error.message; }
 });
 
 els.endClassBtn.addEventListener("click", async () => {
-  if (!state.teacherCode || !confirm(`確定結束 ${state.teacherCode} 並清空資料？`)) return;
+  if (!state.teacherCode || !confirm(`確定結束 ${state.teacherCode} 並釋放代碼？答題資料會保留。`)) return;
   try {
     await endClassroom(state.teacherCode);
     stopTeacherSubscription();
@@ -983,6 +1074,14 @@ getRedirectResult(auth).catch((error) => {
 onAuthStateChanged(auth, handleAdminAuth);
 updateTeacherAccessUi();
 refreshGlobalOnlineCount().catch(() => { els.teacherGlobalOnline.textContent = "暫時無法取得"; });
+
+setInterval(async () => {
+  if (document.hidden || document.body.dataset.view === "student") return;
+  try {
+    await refreshGlobalOnlineCount();
+    if (document.body.dataset.view === "admin" && state.adminAccess) await loadAdminClassrooms();
+  } catch { /* Retry on the next visible-page check. */ }
+}, 30_000);
 
 renderNumberBoard();
 renderAnswers();
