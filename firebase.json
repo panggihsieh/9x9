@@ -1,11 +1,29 @@
 {
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "全班因數大挑戰-卡呼遊戲",
+        "supportEmail": "teacher.hsieh@gmail.com",
+        "authorizedRedirectUris": [
+          "https://x9-factor-game.web.app/__/auth/handler"
+        ]
+      }
+    }
+  },
   "hosting": {
     "public": "v3",
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
-    ]
+      "**/node_modules/**",
+      "**/*.rules",
+      "**/*.md",
+      "**/*.example.js"
+    ],
+    "headers": [{
+      "source": "**",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    }]
   },
   "firestore": {
     "rules": "v3/firestore.rules"

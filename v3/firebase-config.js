@@ -1,6 +1,6 @@
 export const firebaseConfig = {
   apiKey: "AIzaSyDYAjUZU4UDoSqbfPye52CvKX1NPlfd-Jo",
-  authDomain: "x9-factor-game.firebaseapp.com",
+  authDomain: "x9-factor-game.web.app",
   projectId: "x9-factor-game",
   storageBucket: "x9-factor-game.firebasestorage.app",
   messagingSenderId: "553664934423",
@@ -11,8 +11,5 @@ export const firebaseConfig = {
 export const classroomSettings = {
   maxStudents: 100,
   maxGlobalOnline: 100,
-  superAdminEmail: "teacher.hsieh@gmail.com",
-  adminEmails: [
-    "teacher.hsieh@gmail.com"
-  ]
+  superAdminEmail: "teacher.hsieh@gmail.com"
 };

@@ -1,6 +1,6 @@
 export const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  authDomain: "YOUR_PROJECT.web.app",
   projectId: "YOUR_PROJECT_ID",
   storageBucket: "YOUR_PROJECT.appspot.com",
   messagingSenderId: "YOUR_SENDER_ID",
@@ -9,7 +9,6 @@ export const firebaseConfig = {
 
 export const classroomSettings = {
   maxStudents: 100,
-  adminEmails: [
-    "teacher@example.com"
-  ]
+  maxGlobalOnline: 100,
+  superAdminEmail: "teacher.hsieh@gmail.com"
 };

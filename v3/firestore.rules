@@ -8,6 +8,8 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       return isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
         && request.auth.token.email == 'teacher.hsieh@gmail.com';
     }
 
@@ -27,7 +29,8 @@ service cloud.firestore {
     }
 
     match /admins/{email} {
-      allow get: if isSuperAdmin() || (isSignedIn() && request.auth.token.email == email);
+      // Teachers look up a single email without signing in; only admin can list or edit.
+      allow get: if true;
       allow list: if isSuperAdmin();
       allow write: if isSuperAdmin();
     }
