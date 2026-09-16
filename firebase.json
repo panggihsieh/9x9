@@ -1,4 +1,12 @@
 {
+  "hosting": {
+    "public": "v3",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  },
   "firestore": {
     "rules": "v3/firestore.rules"
   }
