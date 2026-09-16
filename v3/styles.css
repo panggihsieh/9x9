@@ -189,6 +189,33 @@ input {
   margin-bottom: 16px;
 }
 
+.focus-number-card,
+.score-card {
+  border: 1px solid #315784;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(22, 38, 51, .96), rgba(13, 24, 34, .96));
+  padding: 14px 18px;
+}
+
+.focus-number-card {
+  min-width: 240px;
+  display: grid;
+  justify-items: center;
+}
+
+.focus-number-card strong {
+  width: min(220px, 100%);
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  margin-top: 8px;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(180deg, #78c2ff, #3997f5);
+  box-shadow: inset 0 -8px 0 rgba(0,0,0,.09), 0 14px 28px rgba(45, 143, 242, .26);
+  font-size: clamp(58px, 8vw, 96px);
+}
+
 .room-head strong,
 .practice-header strong {
   display: block;
@@ -328,6 +355,8 @@ input {
 
 .number-board button.selected {
   background: linear-gradient(180deg, #72c0ff, #2b91ef);
+  box-shadow: 0 0 0 3px rgba(80, 169, 255, .34), 0 12px 22px rgba(38, 144, 239, .38);
+  transform: translateY(-2px);
 }
 
 .practice-main {

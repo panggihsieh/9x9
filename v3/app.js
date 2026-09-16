@@ -291,7 +291,7 @@ function subscribeStudent(code) {
     state.score = data.score || 0;
     state.currentNumber = data.currentNumber || state.currentNumber;
     els.studentScore.textContent = state.score;
-    els.targetNumber.textContent = state.currentNumber;
+    updateTargetFocus();
   });
 }
 
@@ -308,9 +308,18 @@ function renderNumberBoard() {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = i;
+    button.dataset.value = i;
     button.addEventListener("click", () => addAnswer(i));
     els.numberBoard.append(button);
   }
+  updateTargetFocus();
+}
+
+function updateTargetFocus() {
+  els.targetNumber.textContent = state.currentNumber;
+  els.numberBoard.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("selected", Number(button.dataset.value) === state.currentNumber);
+  });
 }
 
 function addAnswer(value) {
@@ -394,6 +403,7 @@ async function nextNumber() {
     note.style.color = "";
   });
   renderAnswers();
+  updateTargetFocus();
   await updateDoc(studentRef(state.studentCode), {
     currentNumber: state.currentNumber,
     tasks: { factors: false, pairs: false, primes: false },
