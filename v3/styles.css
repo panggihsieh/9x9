@@ -263,6 +263,17 @@ h1 {
   white-space: nowrap;
 }
 
+.admin-tab-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .numbered-action::after {
   content: attr(data-step);
   pointer-events: none;

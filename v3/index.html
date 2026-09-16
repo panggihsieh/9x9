@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數挑戰｜第三版全班同步比賽</title>
-  <link rel="stylesheet" href="./styles.css?v=20260916-classroom-lifecycle">
+  <link rel="stylesheet" href="./styles.css?v=20260916-admin-new-tab">
 </head>
 <body>
   <div class="app">
@@ -27,7 +27,7 @@
         <a class="tab" href="../" style="padding: 12px 18px; border-radius: 999px; text-decoration: none;">完整版首頁</a>
         <button class="tab active" data-view="teacher">老師開課</button>
         <button class="tab" data-view="student">學生登入</button>
-        <button class="tab" data-view="admin">後台管理</button>
+        <a class="tab admin-tab-link" data-view="admin" href="?view=admin" target="_blank" rel="noopener" aria-label="後台管理（另開新分頁）">後台管理 ↗</a>
       </nav>
     </header>
 
@@ -257,6 +257,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?v=20260916-classroom-lifecycle"></script>
+  <script type="module" src="./app.js?v=20260916-admin-new-tab"></script>
 </body>
 </html>

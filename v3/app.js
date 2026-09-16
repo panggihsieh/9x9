@@ -914,6 +914,7 @@ function handleAdminAuth(user) {
 els.refreshClassroomsBtn.addEventListener("click", loadAdminClassrooms);
 
 els.tabs.forEach((tab) => {
+  if (tab.tagName === "A") return;
   tab.addEventListener("click", () => switchView(tab.dataset.view));
 });
 
@@ -1065,7 +1066,10 @@ els.priorityTeacherList.addEventListener("click", async (event) => {
 
 const loginSource = sessionStorage.getItem("factor-login-source");
 if (loginSource === "admin") switchView("admin");
-else if (new URLSearchParams(location.search).get("view") === "student") switchView("student");
+else {
+  const requestedView = new URLSearchParams(location.search).get("view");
+  if (["student", "admin"].includes(requestedView)) switchView(requestedView);
+}
 getRedirectResult(auth).catch((error) => {
   if (loginSource === "admin") showAdminError(error);
   else els.teacherAccessNote.textContent = getGoogleLoginErrorMessage(error);
