@@ -39,6 +39,7 @@ const els = {
   maxStudents: document.querySelector("#maxStudents"),
   classStatus: document.querySelector("#classStatus"),
   leaderboard: document.querySelector("#leaderboard"),
+  studentRoster: document.querySelector("#studentRoster"),
   studentTable: document.querySelector("#studentTable"),
   startClassBtn: document.querySelector("#startClassBtn"),
   endClassBtn: document.querySelector("#endClassBtn"),
@@ -204,10 +205,16 @@ function renderTeacherDashboard(students) {
     ? top.map((student) => `<li><strong>${escapeHtml(student.name)}</strong> ${student.score || 0} 分</li>`).join("")
     : "<li>等待學生加入</li>";
 
+  els.studentRoster.innerHTML = "";
   els.studentTable.innerHTML = "";
   students
     .sort((a, b) => (b.score || 0) - (a.score || 0))
     .forEach((student) => {
+      const rosterRow = document.querySelector("#rosterRowTemplate").content.firstElementChild.cloneNode(true);
+      rosterRow.querySelector("[data-name]").textContent = student.name;
+      rosterRow.querySelector("[data-score]").textContent = `${student.score || 0} 分`;
+      els.studentRoster.append(rosterRow);
+
       const row = document.querySelector("#studentRowTemplate").content.firstElementChild.cloneNode(true);
       row.querySelector("[data-name]").textContent = student.name;
       row.querySelector("[data-score]").textContent = `${student.score || 0} 分`;

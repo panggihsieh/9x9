@@ -60,13 +60,17 @@
           </div>
 
           <div class="dashboard-grid">
-            <section>
-              <h3>前 5 名</h3>
-              <ol class="leaderboard" id="leaderboard"></ol>
+            <section class="dashboard-column">
+              <h3>左｜學生名單</h3>
+              <div class="roster-list" id="studentRoster"></div>
             </section>
-            <section>
-              <h3>學生進度</h3>
+            <section class="dashboard-column dashboard-column-main">
+              <h3>中｜1・2・3 完成狀態</h3>
               <div class="student-table" id="studentTable"></div>
+            </section>
+            <section class="dashboard-column">
+              <h3>右｜前 5 名</h3>
+              <ol class="leaderboard" id="leaderboard"></ol>
             </section>
           </div>
         </section>
@@ -171,6 +175,13 @@
       <span data-task="factors"></span>
       <span data-task="pairs"></span>
       <span data-task="primes"></span>
+    </div>
+  </template>
+
+  <template id="rosterRowTemplate">
+    <div class="roster-row">
+      <strong data-name></strong>
+      <span data-score></span>
     </div>
   </template>
 

@@ -235,8 +235,25 @@ input {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(260px, .7fr) 1.3fr;
+  grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.35fr) minmax(220px, .8fr);
   gap: 18px;
+  align-items: start;
+}
+
+.dashboard-column {
+  min-height: 360px;
+  border: 1px solid #294055;
+  border-radius: 14px;
+  background: rgba(9, 19, 30, .72);
+  padding: 14px;
+}
+
+.dashboard-column h3 {
+  margin-bottom: 12px;
+}
+
+.dashboard-column-main {
+  border-color: #3d6589;
 }
 
 .leaderboard {
@@ -246,6 +263,7 @@ input {
 }
 
 .leaderboard li,
+.roster-row,
 .student-row {
   border: 1px solid #294055;
   border-radius: 10px;
@@ -253,14 +271,27 @@ input {
   padding: 12px;
 }
 
+.roster-list,
 .student-table {
   display: grid;
   gap: 8px;
 }
 
+.roster-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.roster-row span {
+  color: var(--muted);
+  font-weight: 900;
+}
+
 .student-row {
   display: grid;
-  grid-template-columns: 1fr 80px 90px 90px 90px;
+  grid-template-columns: minmax(110px, 1fr) 70px repeat(3, minmax(62px, 76px));
   gap: 8px;
   align-items: center;
 }
