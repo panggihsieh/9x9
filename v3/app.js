@@ -149,6 +149,12 @@ const state = {
 
 localStorage.setItem("factor-v3-student-id", state.studentId);
 
+// 明確初始化，避免舊表單還原或空白偏好覆蓋內建值。
+els.teacherGmail.value = "guest@gmail.com";
+els.teacherCode.value = "5188";
+els.teacherPasscode.type = "text";
+els.teacherPasscode.value = "1234";
+
 // 僅記住老師帳號及班級代碼；不儲存通行碼或視為已驗證。
 for (const [input, key] of [
   [els.teacherGmail, "factor-v3-teacher-gmail"],
