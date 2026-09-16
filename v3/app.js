@@ -215,6 +215,13 @@ function subscribeTeacher(code) {
   });
 }
 
+function stopTeacherSubscription() {
+  state.unsubTeacherRoom?.();
+  state.unsubTeacherStudents?.();
+  state.unsubTeacherRoom = null;
+  state.unsubTeacherStudents = null;
+}
+
 function renderTeacherDashboard(students) {
   els.studentCount.textContent = students.length;
 
@@ -473,6 +480,11 @@ els.teacherForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const code = normalizeCode(els.teacherCode.value);
   if (!code) return;
+  const previousCode = state.teacherCode;
+  stopTeacherSubscription();
+  if (previousCode && previousCode !== code) {
+    await endClassroom(previousCode);
+  }
   await openClassroom(code);
   state.teacherCode = code;
   els.teacherRoomCode.textContent = code;
@@ -494,8 +506,12 @@ els.startClassBtn.addEventListener("click", async () => {
 els.endClassBtn.addEventListener("click", async () => {
   if (!state.teacherCode) return;
   if (!confirm(`確定結束 ${state.teacherCode} 並清空資料？`)) return;
+  stopTeacherSubscription();
   await endClassroom(state.teacherCode);
   els.teacherRoom.classList.add("hidden");
+  renderTeacherDashboard([]);
+  state.teacherCode = "";
+  state.teacherSessionId = "";
 });
 
 els.studentForm.addEventListener("submit", async (event) => {
