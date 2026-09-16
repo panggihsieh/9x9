@@ -53,6 +53,8 @@ function expect(result, status, label) {
     const room = { code, sessionId: 'live-test', teacherUid: uid, teacherEmail: email, teacherRole: 'auth', teacherHasPriority: true, maxStudents: 100, studentCount: 0, status: 'waiting' };
     expect(await write('classrooms/' + code, room, ['createdAt', 'updatedAt', 'teacherLastSeenAt', 'lastStudentSeenAt']), 200, 'verified teacher can create classroom');
     expect(await write('classrooms/' + code, { ...room, teacherRole: 'admin' }, ['updatedAt']), 403, 'cannot forge classroom priority');
+    expect(await write('classrooms/' + code, { durationMinutes: 4 }, ['updatedAt'], idToken, true), 403, 'reject unsupported duration');
+    for (const durationMinutes of [2, 3, 5, 10]) expect(await write('classrooms/' + code, { durationMinutes }, ['updatedAt'], idToken, true), 200, 'allow duration ' + durationMinutes);
     expect(await write('classrooms/' + code, { status: 'active' }, ['updatedAt'], idToken, true), 200, 'verified teacher can start classroom');
     // Exercise classroom lifecycle against the deployed rules with isolated data.
     const oldTime = new Date(Date.now() - 10 * 60_000);
