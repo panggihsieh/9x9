@@ -23,6 +23,8 @@ import { classroomSettings, firebaseConfig } from "./firebase-config.js";
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+const ONLINE_WINDOW_MS = 45_000;
+const PRESENCE_INTERVAL_MS = 15_000;
 
 const els = {
   tabs: document.querySelectorAll(".tab"),
@@ -36,7 +38,9 @@ const els = {
   teacherRoom: document.querySelector("#teacherRoom"),
   teacherRoomCode: document.querySelector("#teacherRoomCode"),
   studentCount: document.querySelector("#studentCount"),
+  onlineCount: document.querySelector("#onlineCount"),
   maxStudents: document.querySelector("#maxStudents"),
+  limitStatus: document.querySelector("#limitStatus"),
   classStatus: document.querySelector("#classStatus"),
   leaderboard: document.querySelector("#leaderboard"),
   studentRoster: document.querySelector("#studentRoster"),
@@ -85,11 +89,15 @@ const state = {
   },
   score: 0,
   teacherSessionId: "",
+  teacherMaxStudents: classroomSettings.maxStudents,
+  teacherStudents: [],
   studentSessionId: "",
   unsubTeacherRoom: null,
   unsubTeacherStudents: null,
   unsubStudentRoom: null,
-  unsubStudentDoc: null
+  unsubStudentDoc: null,
+  teacherRefreshTimer: null,
+  presenceTimer: null
 };
 
 localStorage.setItem("factor-v3-student-id", state.studentId);
@@ -199,31 +207,51 @@ async function openClassroom(code) {
 function subscribeTeacher(code) {
   state.unsubTeacherRoom?.();
   state.unsubTeacherStudents?.();
+  clearInterval(state.teacherRefreshTimer);
 
   state.unsubTeacherRoom = onSnapshot(classroomRef(code), (snapshot) => {
     const room = snapshot.data();
     state.teacherSessionId = room?.sessionId || state.teacherSessionId;
+    state.teacherMaxStudents = room?.maxStudents || classroomSettings.maxStudents;
     els.classStatus.textContent = room?.status === "active" ? "練習中" : "等待中";
-    els.maxStudents.textContent = room?.maxStudents || classroomSettings.maxStudents;
+    els.maxStudents.textContent = state.teacherMaxStudents;
   });
 
   state.unsubTeacherStudents = onSnapshot(studentsRef(code), (snapshot) => {
     const students = snapshot.docs
       .map((item) => ({ id: item.id, ...item.data() }))
       .filter((student) => !state.teacherSessionId || student.sessionId === state.teacherSessionId);
+    state.teacherStudents = students;
     renderTeacherDashboard(students);
   });
+
+  state.teacherRefreshTimer = setInterval(() => {
+    renderTeacherDashboard(state.teacherStudents);
+  }, PRESENCE_INTERVAL_MS);
 }
 
 function stopTeacherSubscription() {
   state.unsubTeacherRoom?.();
   state.unsubTeacherStudents?.();
+  clearInterval(state.teacherRefreshTimer);
   state.unsubTeacherRoom = null;
   state.unsubTeacherStudents = null;
+  state.teacherRefreshTimer = null;
+  state.teacherStudents = [];
+}
+
+function isStudentOnline(student) {
+  return typeof student.onlineAt === "number" && Date.now() - student.onlineAt <= ONLINE_WINDOW_MS;
 }
 
 function renderTeacherDashboard(students) {
   els.studentCount.textContent = students.length;
+  const onlineCount = students.filter((student) => isStudentOnline(student)).length;
+  const limitReached = students.length >= state.teacherMaxStudents;
+  els.onlineCount.textContent = onlineCount;
+  els.limitStatus.textContent = limitReached ? "✕ 已限制" : "✓ 可加入";
+  els.limitStatus.classList.toggle("closed", limitReached);
+  els.limitStatus.classList.toggle("open", !limitReached);
 
   const top = [...students]
     .sort((a, b) => (b.score || 0) - (a.score || 0))
@@ -285,6 +313,7 @@ async function joinStudent(code, name) {
       currentNumber: alreadyInSession ? existingStudent.currentNumber || state.currentNumber : state.currentNumber,
       tasks: alreadyInSession ? existingStudent.tasks || { factors: false, pairs: false, primes: false } : { factors: false, pairs: false, primes: false },
       joinedAt: alreadyInSession ? existingStudent.joinedAt : serverTimestamp(),
+      onlineAt: Date.now(),
       lastSeen: serverTimestamp()
     }, { merge: true });
 
@@ -297,6 +326,7 @@ async function joinStudent(code, name) {
   });
 
   state.studentSessionId = joinedSessionId;
+  startPresence();
   subscribeStudent(code);
 }
 
@@ -334,7 +364,28 @@ function subscribeStudent(code) {
   });
 }
 
+function startPresence() {
+  stopPresence();
+  const updatePresence = () => {
+    if (!state.studentCode || !state.studentSessionId) return;
+    updateDoc(studentRef(state.studentCode), {
+      sessionId: state.studentSessionId,
+      onlineAt: Date.now(),
+      lastSeen: serverTimestamp()
+    }).catch(() => {});
+  };
+  updatePresence();
+  state.presenceTimer = setInterval(updatePresence, PRESENCE_INTERVAL_MS);
+}
+
+function stopPresence() {
+  if (!state.presenceTimer) return;
+  clearInterval(state.presenceTimer);
+  state.presenceTimer = null;
+}
+
 function showStudentEnded() {
+  stopPresence();
   els.practiceView.classList.add("hidden");
   els.studentLobby.classList.remove("hidden");
   els.lobbyTitle.textContent = "班級已結束";
@@ -420,6 +471,7 @@ async function checkStudentTask(task) {
     sessionId: state.studentSessionId,
     [`tasks.${task}`]: true,
     score: increment(task === "pairs" ? 18 : 14),
+    onlineAt: Date.now(),
     lastSeen: serverTimestamp()
   });
   els.practiceFeedback.textContent = "已同步給老師 dashboard。";
@@ -448,6 +500,7 @@ async function nextNumber() {
     sessionId: state.studentSessionId,
     currentNumber: state.currentNumber,
     tasks: { factors: false, pairs: false, primes: false },
+    onlineAt: Date.now(),
     lastSeen: serverTimestamp()
   });
 }

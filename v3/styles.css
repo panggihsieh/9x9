@@ -239,7 +239,7 @@ input {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -258,6 +258,18 @@ input {
 
 .metrics strong {
   font-size: 34px;
+}
+
+.metrics .limit-status {
+  font-size: 26px;
+}
+
+.limit-status.open {
+  color: var(--green);
+}
+
+.limit-status.closed {
+  color: var(--danger);
 }
 
 .dashboard-grid {
