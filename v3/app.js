@@ -921,7 +921,7 @@ async function loadAdminClassrooms() {
   els.refreshClassroomsBtn.disabled = true;
   try {
     const rooms = await getDocs(collection(db, "classrooms"));
-    const entries = await Promise.all(rooms.docs.map(async (item) => {
+    const entries = await Promise.all(rooms.docs.filter((item) => item.data().status !== "released").map(async (item) => {
       const room = item.data();
       const members = await getDocs(studentsRef(item.id));
       const online = members.docs.filter((member) => member.data().sessionId === room.sessionId && isStudentOnline(member.data())).length;
@@ -935,7 +935,7 @@ async function loadAdminClassrooms() {
       const info = document.createElement("div");
       const title = document.createElement("strong");
       const teacherOnline = Date.now() - timestampMillis(room.teacherLastSeenAt) <= ONLINE_WINDOW_MS;
-      title.textContent = `${code}｜${room.status === "released" ? "已釋放" : teacherOnline || online ? "在線" : canReclaimRoom(room) ? "閒置已到期" : "閒置／保留中"}`;
+      title.textContent = `${code}｜${teacherOnline || online ? "在線" : canReclaimRoom(room) ? "閒置已到期" : "閒置／保留中"}`;
       const detail = document.createElement("small");
       const lastSeen = Math.max(timestampMillis(room.teacherLastSeenAt), timestampMillis(room.lastStudentSeenAt), timestampMillis(room.updatedAt));
       detail.textContent = `${room.teacherEmail || "舊版：無老師 Email"}｜老師${teacherOnline ? "在線" : "離線"}｜在線學生 ${online} 人｜最後活動 ${lastSeen ? new Date(lastSeen).toLocaleString("zh-TW") : "未知"}`;
@@ -944,7 +944,6 @@ async function loadAdminClassrooms() {
       release.type = "button";
       release.className = "danger";
       release.textContent = "釋放班級代碼";
-      release.disabled = room.status === "released";
       release.addEventListener("click", async () => {
         if (!confirm(`釋放 ${code}？這會結束該課堂，保留既有答題資料。畫面載入時有 ${online} 位學生在線。`)) return;
         release.disabled = true;
@@ -963,7 +962,7 @@ async function loadAdminClassrooms() {
       row.append(info, release);
       els.adminClassroomList.append(row);
     }
-    if (!entries.length) els.adminClassroomList.textContent = "目前沒有班級紀錄。";
+    if (!entries.length) els.adminClassroomList.textContent = "目前沒有尚未釋放的班級。";
   } catch (error) { els.adminStatus.textContent = error.message; }
   finally { els.refreshClassroomsBtn.disabled = false; }
 }
