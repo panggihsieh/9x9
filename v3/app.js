@@ -1,5 +1,6 @@
 import { playSound } from "./sound.js?v=20260917-tick-tock";
 import { classroomCountdown } from "./countdown.mjs";
+import { chooseProgressiveNumber } from "./question-difficulty.mjs";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
   GoogleAuthProvider,
@@ -252,9 +253,7 @@ function samePairs(a, b) {
 }
 
 function chooseNumber() {
-  const values = Array.from({ length: 99 }, (_, index) => index + 2)
-    .filter((value) => primeFactorsOf(value).length >= 2);
-  return values[Math.floor(Math.random() * values.length)];
+  return chooseProgressiveNumber(state.score, state.currentNumber);
 }
 
 async function openClassroom(code) {
