@@ -341,9 +341,8 @@ function subscribeTeacher(code) {
       return;
     }
     state.teacherMaxStudents = room?.maxStudents || classroomSettings.maxStudents;
-    const modeSelector = document.querySelector('#classroomDifficulty');
-    modeSelector.disabled = true;
-    if (room.difficulty) modeSelector.value = room.difficulty;
+    const modeName = { beginner: '初級', intermediate: '中級', advanced: '高級' }[room.difficulty] || '漸進模式';
+    document.querySelector('#classroomModeHint').textContent = `目前 ${code}：${modeName}。此選單套用於新教室；更換本班模式請先結束班級再開課。`;
     countdownRoom = room;
     updateCountdown();
     const duration = [2, 3, 5, 10].includes(room.durationMinutes) ? room.durationMinutes : 3;
@@ -368,7 +367,7 @@ function subscribeTeacher(code) {
 }
 
 function stopTeacherSubscription() {
-  document.querySelector('#classroomDifficulty').disabled = false;
+  document.querySelector('#classroomModeHint').textContent = '請先選擇模式，再開啟教室。';
   clearInterval(state.teacherCountdownTimer);
   state.teacherCountdownTimer = null;
   clearInterval(state.teacherHeartbeatTimer);

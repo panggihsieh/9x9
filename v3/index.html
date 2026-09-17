@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數挑戰｜第三版全班同步比賽</title>
-  <link rel="stylesheet" href="./styles.css?v=20260917-mode-position">
+  <link rel="stylesheet" href="./styles.css?v=20260917-mode-highlight">
 </head>
 <body>
   <div class="app">
@@ -33,11 +33,12 @@
           <label for="soundVolume">音量 <input id="soundVolume" type="range" min="0" max="100" value="35"></label>
         </div>
             <label class="classroom-mode-control">教室模式
-              <select id="classroomDifficulty" form="teacherForm">
+              <select id="classroomDifficulty" form="teacherForm" aria-describedby="classroomModeHint">
                 <option value="beginner">初級｜基礎因數</option>
                 <option value="intermediate">中級｜進階練習</option>
                 <option value="advanced">高級｜挑戰題</option>
               </select>
+              <small id="classroomModeHint" role="status">請先選擇模式，再開啟教室。</small>
             </label>
       </nav>
     </header>
@@ -280,6 +281,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?v=20260917-modes"></script>
+  <script type="module" src="./app.js?v=20260917-mode-highlight"></script>
 </body>
 </html>

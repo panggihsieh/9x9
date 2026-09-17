@@ -840,7 +840,16 @@ body[data-view="student"] .logo span { font-size: 19px; }
   flex-wrap: wrap;
   gap: 8px;
   max-width: 100%;
+  padding: 10px 14px;
+  border: 2px solid #ffd15d;
+  border-radius: 14px;
+  background: #fff0a0;
+  color: #172638;
+  font-weight: 800;
 }
+.classroom-mode-control small { flex-basis: 100%; max-width: 380px; font-size: 13px; line-height: 1.5; }
+.classroom-mode-control #classroomDifficulty { background: #fffdf0; color: #172638; border-color: #967014; cursor: pointer; font-weight: 800; }
+.classroom-mode-control #classroomDifficulty:focus-visible { outline: 3px solid #1680db; outline-offset: 3px; }
 body[data-view="student"] .classroom-mode-control,
 body[data-view="admin"] .classroom-mode-control { display: none; }
 .sound-controls label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
