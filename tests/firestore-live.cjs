@@ -105,6 +105,14 @@ function expect(result, status, label) {
     expect(await write(studentPath, { currentNumber: 24, roundVersion: 1, tasks: { factors: false, pairs: false, primes: false } }, ['lastSeen'], null, true), 200, 'new round resets tasks without adding score');
     expect(await write(studentPath, { score: 60, tasks: taskState }, ['lastSeen'], null, true), 200, 'new round can score once');
     expect(await write(studentPath, { score: 74, tasks: taskState }, ['lastSeen'], null, true), 403, 'new round also rejects duplicate score');
+    for (let attempts = 1; attempts <= 4; attempts++) {
+      expect(await write(studentPath, { wrongAttempts: { pairs: attempts } }, ['lastSeen'], null, true), 200, 'save incorrect pair attempt ' + attempts);
+    }
+    expect(await write(studentPath, { wrongAttempts: { pairs: 5 }, revealedTasks: { pairs: true }, tasks: { factors: true, pairs: true, primes: false } }, ['lastSeen'], null, true), 200, 'fifth incorrect answer completes without scoring');
+    const revealedStudent = await request(base + '/' + studentPath, 'GET');
+    assert.equal(revealedStudent.data.fields.score.integerValue, '60');
+    expect(await write(studentPath, { score: 78 }, ['lastSeen'], null, true), 403, 'revealed answer cannot receive points later');
+    expect(await write(studentPath, { currentNumber: 30, roundVersion: 2, tasks: { factors: false, pairs: false, primes: false }, wrongAttempts: {}, revealedTasks: {} }, ['lastSeen'], null, true), 200, 'next round clears wrong attempts and revealed answers');
     expect(await write('classrooms/' + code, { lastStudentSeenAt: oldTime }, [], null, true), 403, 'student cannot forge an old activity timestamp');
     expect(await write('classrooms/' + code, { status: 'released' }, ['releasedAt', 'updatedAt'], idToken, true), 200, 'owner releases classroom without deleting answers');
     expect(await write('classrooms/' + code + '/students/' + studentId, { score: 5 }, ['lastSeen'], null, true), 403, 'released classroom rejects student writes');

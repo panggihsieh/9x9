@@ -120,6 +120,8 @@ const state = {
   },
   score: 0,
   completedTasks: {},
+  wrongAttempts: {},
+  revealedTasks: {},
   studentTaskBusy: false,
   studentRoundVersion: 0,
   authUser: null,
@@ -589,6 +591,8 @@ async function joinStudent(code, name) {
   });
 
   state.completedTasks = {};
+  state.wrongAttempts = {};
+  state.revealedTasks = {};
   state.answers = { factors: [], pairs: [], pairDraft: [], primes: [] };
   state.studentRoundVersion = 0;
   renderAnswers();
@@ -632,6 +636,8 @@ function subscribeStudent(code) {
       state.answers = { factors: [], pairs: [], pairDraft: [], primes: [] };
     }
     state.completedTasks = data.tasks || {};
+    state.wrongAttempts = data.wrongAttempts || {};
+    state.revealedTasks = data.revealedTasks || {};
     state.studentRoundVersion = data.roundVersion || 0;
     state.score = data.score || 0;
     state.currentNumber = data.currentNumber || state.currentNumber;
@@ -712,6 +718,12 @@ function addAnswer(value) {
 }
 
 function renderAnswers() {
+  for (const task of ["factors", "pairs", "primes"]) {
+    if (!state.revealedTasks[task]) continue;
+    state.answers[task] = task === "factors" ? factorsOf(state.currentNumber)
+      : task === "pairs" ? factorPairs(state.currentNumber) : primeFactorsOf(state.currentNumber);
+    if (task === "pairs") state.answers.pairDraft = [];
+  }
   renderTaskCompletion();
   renderAnswerZone(els.factorAnswer, state.answers.factors);
   renderAnswerZone(els.pairAnswer, [
@@ -739,11 +751,12 @@ function renderTaskCompletion() {
   for (const task of ["factors", "pairs", "primes"]) {
     const done = Boolean(state.completedTasks[task]);
     const note = task === "factors" ? els.factorNote : task === "pairs" ? els.pairNote : els.primeNote;
-    note.textContent = done ? "完成（已計分）" : "尚未完成";
+    note.textContent = done ? state.revealedTasks[task] ? "完成（顯示答案，不計分）" : "完成（已計分）"
+      : state.wrongAttempts[task] ? `答錯 ${state.wrongAttempts[task]} / 5 次` : "尚未完成";
     note.style.color = done ? "var(--green)" : "";
     const checkButton = document.querySelector(`[data-check="${task}"]`);
     checkButton.disabled = done || state.studentTaskBusy;
-    checkButton.textContent = done ? "已計分" : state.studentTaskBusy ? "儲存中…" : "確認";
+    checkButton.textContent = done ? "已完成" : state.studentTaskBusy ? "儲存中…" : "確認";
     document.querySelector(`[data-clear="${task}"]`).disabled = done || state.studentTaskBusy;
   }
   els.nextNumberBtn.disabled = state.studentTaskBusy;
@@ -759,33 +772,41 @@ async function checkStudentTask(task) {
   if (task === "factors") correct = sameNumberList(state.answers.factors, factorsOf(n));
   if (task === "pairs") correct = state.answers.pairDraft.length === 0 && samePairs(state.answers.pairs, factorPairs(n));
   if (task === "primes") correct = JSON.stringify(state.answers.primes) === JSON.stringify(primeFactorsOf(n));
-  const note = task === "factors" ? els.factorNote : task === "pairs" ? els.pairNote : els.primeNote;
-  if (!correct) {
-    playSound("wrong");
-    note.textContent = "還不正確，再試一次";
-    note.style.color = "var(--danger)";
-    return;
-  }
   state.studentTaskBusy = true;
   renderTaskCompletion();
   try {
-    const awarded = await runTransaction(db, async (tx) => {
+    const result = await runTransaction(db, async (tx) => {
       const data = (await tx.get(ref)).data();
       if (!data || data.sessionId !== sessionId || data.currentNumber !== n
           || (data.roundVersion || 0) !== roundVersion) throw new Error("題目已更新，請依目前題目作答。");
-      if (data.tasks?.[task]) return false;
+      if (data.tasks?.[task]) return { done: true, revealed: Boolean(data.revealedTasks?.[task]), awarded: false };
+      if (!correct) {
+        const attempts = Math.min(5, (data.wrongAttempts?.[task] || 0) + 1);
+        const revealed = attempts >= 5;
+        tx.update(ref, {
+          [`wrongAttempts.${task}`]: attempts,
+          ...(revealed ? { [`tasks.${task}`]: true, [`revealedTasks.${task}`]: true } : {}),
+          onlineAt: Date.now(), lastSeen: serverTimestamp()
+        });
+        return { done: revealed, revealed, attempts, awarded: false };
+      }
       tx.update(ref, {
         [`tasks.${task}`]: true,
         score: (data.score || 0) + (task === "pairs" ? 18 : 14),
         onlineAt: Date.now(), lastSeen: serverTimestamp()
       });
-      return true;
+      return { done: true, revealed: false, awarded: true };
     });
     if (state.studentSessionId === sessionId && state.currentNumber === n && state.studentRoundVersion === roundVersion) {
-      state.completedTasks[task] = true;
+      state.completedTasks[task] = result.done;
+      state.revealedTasks[task] = result.revealed;
+      if (result.attempts) state.wrongAttempts[task] = result.attempts;
+      renderAnswers();
     }
-    if (awarded) playSound("correct");
-    els.practiceFeedback.textContent = awarded ? "已計分並同步給老師。" : "這一小題已計分，不會重複加分。";
+    playSound(result.awarded ? "correct" : "wrong");
+    els.practiceFeedback.textContent = result.awarded ? "已計分並同步給老師。"
+      : result.revealed ? "答錯 5 次，已顯示正確答案，本小題不計分。"
+      : result.done ? "這一小題已完成，不會重複加分。" : `還不正確，已答錯 ${result.attempts} / 5 次。`;
   } catch (error) {
     els.practiceFeedback.textContent = `計分未完成：${error.message}`;
   } finally {
@@ -822,6 +843,7 @@ async function nextNumber() {
       tx.update(ref, {
         currentNumber: number, roundVersion: roundVersion + 1,
         tasks: { factors: false, pairs: false, primes: false },
+        wrongAttempts: {}, revealedTasks: {},
         onlineAt: Date.now(), lastSeen: serverTimestamp()
       });
     });
@@ -829,6 +851,8 @@ async function nextNumber() {
       state.currentNumber = number;
       state.studentRoundVersion = roundVersion + 1;
       state.completedTasks = {};
+      state.wrongAttempts = {};
+      state.revealedTasks = {};
       state.answers = { factors: [], pairs: [], pairDraft: [], primes: [] };
       renderAnswers();
       updateTargetFocus();

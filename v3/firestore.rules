@@ -166,7 +166,14 @@ service cloud.firestore {
             && after.currentNumber is int && after.currentNumber >= 2 && after.currentNumber <= 100
             && after.tasks == {'factors': false, 'pairs': false, 'primes': false};
           return (sameRound && (unchanged || taskPoints('factors', 14)
-            || taskPoints('pairs', 18) || taskPoints('primes', 14))) || nextRound;
+            || taskPoints('pairs', 18) || taskPoints('primes', 14)
+            || revealedTask('factors') || revealedTask('pairs') || revealedTask('primes'))) || nextRound;
+        }
+        function revealedTask(task) {
+          return taskPoints(task, 0)
+            && request.resource.data.get('revealedTasks', {}).get(task, false) == true
+            && request.resource.data.get('wrongAttempts', {}).get(task, 0) == 5
+            && resource.data.get('wrongAttempts', {}).get(task, 0) == 4;
         }
         function currentStudent() {
           let room = get(/databases/$(database)/documents/classrooms/$(code)).data;
