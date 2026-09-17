@@ -102,7 +102,8 @@ const els = {
   priorityTeacherPasscode: document.querySelector("#priorityTeacherPasscode"),
   priorityTeacherList: document.querySelector("#priorityTeacherList"),
   adminClassroomList: document.querySelector("#adminClassroomList"),
-  refreshClassroomsBtn: document.querySelector("#refreshClassroomsBtn")
+  refreshClassroomsBtn: document.querySelector("#refreshClassroomsBtn"),
+  releaseAllClassroomsBtn: document.querySelector("#releaseAllClassroomsBtn")
 };
 
 const state = {
@@ -871,6 +872,50 @@ async function endClassroom(code, sessionId = state.teacherSessionId) {
   });
 }
 
+async function releaseAllClassrooms() {
+  if (!state.adminAccess || els.releaseAllClassroomsBtn.disabled) return;
+  els.releaseAllClassroomsBtn.disabled = true;
+  els.releaseAllClassroomsBtn.textContent = "讀取班級中…";
+  let released = 0;
+  let skipped = 0;
+  const failed = [];
+  try {
+    const rooms = await getDocs(collection(db, "classrooms"));
+    const targets = rooms.docs.filter((item) => item.data().status !== "released");
+    if (!targets.length) {
+      els.adminStatus.textContent = "所有班級代碼皆已釋放。";
+      return;
+    }
+    if (!state.adminAccess || !confirm(`確定釋放全部 ${targets.length} 個班級代碼？正在進行的課堂也會結束，學生答題資料將保留。`)) return;
+    for (const item of targets) {
+      els.releaseAllClassroomsBtn.textContent = `釋放中 ${released + skipped + failed.length + 1} / ${targets.length}`;
+      try {
+        const changed = await runTransaction(db, async (tx) => {
+          if (!state.adminAccess) throw new Error("管理者已登出");
+          const current = await tx.get(item.ref);
+          if (!current.exists() || current.data().status === "released"
+              || current.data().sessionId !== item.data().sessionId) return false;
+          tx.update(item.ref, { status: "released", releasedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          return true;
+        });
+        if (changed) released += 1;
+        else skipped += 1;
+      } catch {
+        failed.push(item.id);
+      }
+    }
+    await loadAdminClassrooms();
+    els.adminStatus.textContent = `已釋放 ${released} 個班級代碼，答題資料已保留。`
+      + (skipped ? ` ${skipped} 個班級已釋放或已換新課堂，略過。` : "")
+      + (failed.length ? ` 釋放失敗：${failed.join("、")}，請重試。` : "");
+  } catch (error) {
+    els.adminStatus.textContent = `無法釋放全部班級：${error.message}`;
+  } finally {
+    els.releaseAllClassroomsBtn.disabled = false;
+    els.releaseAllClassroomsBtn.textContent = "全部班級代碼釋放";
+  }
+}
+
 async function loadAdminClassrooms() {
   if (!state.adminAccess) return;
   els.refreshClassroomsBtn.disabled = true;
@@ -1047,6 +1092,7 @@ function handleAdminAuth(user) {
 }
 
 els.refreshClassroomsBtn.addEventListener("click", loadAdminClassrooms);
+els.releaseAllClassroomsBtn.addEventListener("click", releaseAllClassrooms);
 
 els.tabs.forEach((tab) => {
   if (tab.tagName === "A") return;
