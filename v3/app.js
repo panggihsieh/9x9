@@ -1,4 +1,5 @@
-import { playSound } from "./sound.js";
+import { playSound } from "./sound.js?v=20260917-countdown";
+import { classroomCountdown } from "./countdown.mjs";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
   GoogleAuthProvider,
@@ -149,6 +150,7 @@ const state = {
   unsubStudentRoom: null,
   unsubStudentDoc: null,
   teacherRefreshTimer: null,
+  teacherCountdownTimer: null,
   teacherHeartbeatTimer: null,
   presenceTimer: null
 };
@@ -308,6 +310,23 @@ function subscribeTeacher(code) {
   state.unsubTeacherRoom?.();
   state.unsubTeacherStudents?.();
   clearInterval(state.teacherRefreshTimer);
+  clearInterval(state.teacherCountdownTimer);
+
+  let countdownRoom;
+  let lastSecond;
+  const updateCountdown = () => {
+    const countdown = classroomCountdown(countdownRoom);
+    els.classStatus.textContent = !countdown
+      ? countdownRoom?.status === "active" ? "準備倒數…" : "等待中"
+      : countdown.seconds === 0 ? "時間到 · 00:00" : `練習中 · ${countdown.text}`;
+    els.classStatus.classList.toggle("countdown-urgent", Boolean(countdown && countdown.seconds <= 10));
+    if (countdown && countdown.seconds !== lastSecond && lastSecond !== undefined && lastSecond > 0
+        && !document.hidden && document.body.dataset.view === "teacher") {
+      playSound(countdown.seconds === 0 ? "timeup" : countdown.seconds <= 10 ? "countdown" : "tick");
+    }
+    lastSecond = countdown?.seconds;
+  };
+  state.teacherCountdownTimer = setInterval(updateCountdown, 250);
 
   let lastDuration;
   state.unsubTeacherRoom = onSnapshot(classroomRef(code), (snapshot) => {
@@ -320,13 +339,13 @@ function subscribeTeacher(code) {
       return;
     }
     state.teacherMaxStudents = room?.maxStudents || classroomSettings.maxStudents;
-    els.classStatus.textContent = room?.status === "active" ? "練習中" : "等待中";
+    countdownRoom = room;
+    updateCountdown();
     const duration = [2, 3, 5, 10].includes(room.durationMinutes) ? room.durationMinutes : 3;
     if (duration !== lastDuration) document.querySelectorAll('[name="durationMinutes"]').forEach(input => { input.checked = Number(input.value) === duration; });
     lastDuration = duration;
     document.querySelector('#durationOptions').disabled = room.status === "active";
     els.startClassBtn.disabled = room.status === "active";
-    if (room.status === "active") els.classStatus.textContent = `練習中 · ${duration} 分鐘`;
     els.maxStudents.textContent = state.teacherMaxStudents;
   });
 
@@ -344,6 +363,8 @@ function subscribeTeacher(code) {
 }
 
 function stopTeacherSubscription() {
+  clearInterval(state.teacherCountdownTimer);
+  state.teacherCountdownTimer = null;
   clearInterval(state.teacherHeartbeatTimer);
   state.teacherHeartbeatTimer = null;
   state.unsubTeacherRoom?.();
@@ -522,7 +543,7 @@ function renderTeacherDashboard(students) {
 
   const top = [...students]
     .sort((a, b) => (b.score || 0) - (a.score || 0))
-    .slice(0, 5);
+    .slice(0, 10);
   els.leaderboard.innerHTML = top.length
     ? top.map((student) => `<li><strong>${escapeHtml(student.name)}</strong> ${student.score || 0} 分</li>`).join("")
     : "<li>等待學生加入</li>";

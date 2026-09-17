@@ -21,7 +21,8 @@ async function unlock() {
 }
 export function playSound(kind) {
   if (!enabled || context?.state !== 'running') return;
-  const notes = { correct: [523, 659, 784], wrong: [220, 165], start: [392, 523, 784] }[kind];
+  const notes = { correct: [523, 659, 784], wrong: [220, 165], start: [392, 523, 784],
+    tick: [660], countdown: [880], timeup: [784, 659, 523, 392] }[kind];
   if (!notes) return;
   try {
     notes.forEach((frequency, index) => {
@@ -30,7 +31,7 @@ export function playSound(kind) {
       const start = context.currentTime + index * 0.14;
       oscillator.frequency.value = frequency;
       gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(0.25, start + 0.015);
+      gain.gain.linearRampToValueAtTime(kind === 'tick' ? 0.04 : 0.25, start + 0.015);
       gain.gain.exponentialRampToValueAtTime(0.001, start + 0.22);
       oscillator.connect(gain); gain.connect(master);
       oscillator.start(start); oscillator.stop(start + 0.24);

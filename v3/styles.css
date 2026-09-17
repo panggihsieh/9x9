@@ -774,6 +774,9 @@ body[data-view="student"] .logo span { font-size: 19px; }
   font-weight: 800;
 }
 
+#classStatus { font-variant-numeric: tabular-nums; }
+#classStatus.countdown-urgent { color: var(--danger); }
+
 .practice-controls {
   position: sticky;
   bottom: calc(12px + env(safe-area-inset-bottom, 0px));
