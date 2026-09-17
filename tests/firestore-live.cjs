@@ -112,6 +112,10 @@ function expect(result, status, label) {
     const revealedStudent = await request(base + '/' + studentPath, 'GET');
     assert.equal(revealedStudent.data.fields.score.integerValue, '60');
     expect(await write(studentPath, { score: 78 }, ['lastSeen'], null, true), 403, 'revealed answer cannot receive points later');
+    for (let attempts = 1; attempts <= 4; attempts++) {
+      expect(await write(studentPath, { wrongAttempts: { pairs: 5, primes: attempts } }, ['lastSeen'], null, true), 200, 'save incorrect prime attempt ' + attempts);
+    }
+    expect(await write(studentPath, { wrongAttempts: { pairs: 5, primes: 5 }, revealedTasks: { pairs: true, primes: true }, tasks: { factors: true, pairs: true, primes: true } }, ['lastSeen'], null, true), 200, 'fifth incorrect prime answer reveals without scoring');
     expect(await write(studentPath, { currentNumber: 30, roundVersion: 2, tasks: { factors: false, pairs: false, primes: false }, wrongAttempts: {}, revealedTasks: {} }, ['lastSeen'], null, true), 200, 'next round clears wrong attempts and revealed answers');
     expect(await write('classrooms/' + code, { lastStudentSeenAt: oldTime }, [], null, true), 403, 'student cannot forge an old activity timestamp');
     expect(await write('classrooms/' + code, { status: 'released' }, ['releasedAt', 'updatedAt'], idToken, true), 200, 'owner releases classroom without deleting answers');
