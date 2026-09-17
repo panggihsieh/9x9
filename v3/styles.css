@@ -904,3 +904,8 @@ button[data-busy="true"]::before { content: "⌛"; display: inline-block; margin
 .duration-options input:checked + span::before { color: #102030; outline-color: #102030; }
 .duration-options input:focus-visible + span { outline: 3px solid #50a9ff; outline-offset: 3px; }
 .duration-options:disabled label { cursor: default; opacity: .8; }
+
+.quota-warning { margin: 0 0 20px; padding: 18px 22px; border: 2px solid #ffbe55; border-radius: 14px; background: #49201d; color: #fff5e6; }
+.quota-warning[hidden] { display: none; }
+.quota-warning strong { display: block; font-size: clamp(22px, 3vw, 32px); color: #ffe08a; }
+.quota-warning p { margin: 8px 0 0; line-height: 1.6; }

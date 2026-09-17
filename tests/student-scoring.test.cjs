@@ -12,7 +12,7 @@ function setup(saved = {}, fail = false) {
   const buttons = {};
   const storage = new Map();
   const context = vm.createContext({ state, els, db: {}, localStorage: { setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k), getItem: k => storage.get(k) }, document: { querySelector: (selector) => buttons[selector] ||= {} },
-    databaseError: error => error.message, studentRef: () => 'student', presenceRef: () => 'presence', serverTimestamp: () => 0, playSound: () => {},
+    clearQuotaWarning: () => {}, databaseError: error => error.message, studentRef: () => 'student', presenceRef: () => 'presence', serverTimestamp: () => 0, playSound: () => {},
     factorsOf: () => [1,2,3,4,6,8,12,24], sameNumberList: (a,b) => JSON.stringify(a) === JSON.stringify(b),
     factorPairs: () => [[1,24],[2,12],[3,8],[4,6]], primeFactorsOf: () => [2,2,2,3],
     samePairs: (a,b) => JSON.stringify(a) === JSON.stringify(b), renderAnswerZone: () => {},

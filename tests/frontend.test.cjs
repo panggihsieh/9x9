@@ -10,7 +10,7 @@ function page(verifyTeacher) {
   els.teacherGmail.value = "teacher@example.com";
   els.teacherPasscode.value = "0037";
   els.teacherIdentityForm = { addEventListener: (event, fn) => { submit = fn; } };
-  const context = vm.createContext({ state, els, verifyTeacher, auth: { currentUser: { uid: "test-uid" } }, classroomSettings: { maxGlobalOnline: 100 }, SUPER_ADMIN_EMAIL: "teacher.hsieh@gmail.com", normalizeEmail: (value) => value.trim().toLowerCase() });
+  const context = vm.createContext({ databaseError: error => error.message, state, els, verifyTeacher, auth: { currentUser: { uid: "test-uid" } }, classroomSettings: { maxGlobalOnline: 100 }, SUPER_ADMIN_EMAIL: "teacher.hsieh@gmail.com", normalizeEmail: (value) => value.trim().toLowerCase() });
   vm.runInContext(source.slice(source.indexOf("function setButtonBusy("), source.indexOf('els.teacherForm.addEventListener')), context);
   vm.runInContext(source.slice(source.indexOf("function updateTeacherAccessUi()"), source.indexOf("async function verifyTeacher(")), context);
   vm.runInContext(source.slice(source.indexOf("async function refreshTeacherAccess()"), source.indexOf("async function ensureTeacherCanOpenClassroom()")), context);

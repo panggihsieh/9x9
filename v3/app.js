@@ -259,8 +259,30 @@ const activeRoomsQuery = () => query(collection(db, "classrooms"), where("status
 const currentStudentsQuery = (code, sessionId) => query(studentsRef(code), where("sessionId", "==", sessionId || ""));
 let quotaBackoffUntil = 0;
 let lastStudentActivityAt = 0;
+const quotaWarningKey = "factor-v3-quota-warning-day";
+function quotaDay() {
+  return new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+function showQuotaWarning() {
+  document.querySelector('#quotaWarning').hidden = false;
+  try { localStorage.setItem(quotaWarningKey, quotaDay()); } catch {}
+}
+function clearQuotaWarning() {
+  document.querySelector('#quotaWarning').hidden = true;
+  try { localStorage.removeItem(quotaWarningKey); } catch {}
+}
+function restoreQuotaWarning() {
+  try {
+    const saved = localStorage.getItem(quotaWarningKey);
+    document.querySelector('#quotaWarning').hidden = saved !== quotaDay();
+    if (saved && saved !== quotaDay()) localStorage.removeItem(quotaWarningKey);
+  } catch {}
+}
+restoreQuotaWarning();
+window.addEventListener('storage', event => { if (event.key === quotaWarningKey) restoreQuotaWarning(); });
 function databaseError(error) {
   if (error?.code === "resource-exhausted" || /quota exceeded/i.test(error?.message || "")) {
+    showQuotaWarning();
     quotaBackoffUntil = Date.now() + 5 * 60_000;
     const notice = document.querySelector('#classroomModeHint');
     if (notice) notice.textContent = "資料庫配額已用盡，暫時無法開啟教室；請等待配額恢復後重試。";
@@ -318,6 +340,7 @@ async function openClassroom(code) {
       createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     return nextSessionId;
   });
+  clearQuotaWarning();
   state.teacherSessionId = sessionId;
 }
 
@@ -618,6 +641,7 @@ async function joinStudent(code, name) {
   state.answers = { factors: [], pairs: [], pairDraft: [], primes: [] };
   state.studentRoundVersion = 0;
   renderAnswers();
+  clearQuotaWarning();
   state.studentSessionId = joinedSessionId;
   state.studentFinished = false;
   state.studentReleased = false;
@@ -842,6 +866,7 @@ async function flushPendingScore() {
         lastStudentSeenAt: serverTimestamp(), studentHeartbeatId: ref.id }, { merge: true });
       return { ...data, ...values };
     });
+    clearQuotaWarning();
     if (key !== pendingKey()) return;
     // Answers entered while a request was in flight remain queued for the next flush.
     if (JSON.stringify(pendingScore) === JSON.stringify(pending)) storePending(null);
@@ -917,7 +942,7 @@ async function nextNumber() {
       updateTargetFocus();
     }
   } catch (error) {
-    els.practiceFeedback.textContent = `換題失敗：${error.message}`;
+    els.practiceFeedback.textContent = `換題失敗：${databaseError(error)}`;
   } finally {
     state.studentTaskBusy = false;
     renderTaskCompletion();
@@ -1014,13 +1039,13 @@ async function loadAdminClassrooms() {
             tx.update(ref, { status: "released", releasedAt: serverTimestamp(), updatedAt: serverTimestamp() });
           });
           await loadAdminClassrooms();
-        } catch (error) { els.adminStatus.textContent = error.message; release.disabled = false; }
+        } catch (error) { els.adminStatus.textContent = databaseError(error); release.disabled = false; }
       });
       row.append(info, release);
       els.adminClassroomList.append(row);
     }
     if (!entries.length) els.adminClassroomList.textContent = "目前沒有尚未釋放的班級。";
-  } catch (error) { els.adminStatus.textContent = error.message; }
+  } catch (error) { els.adminStatus.textContent = databaseError(error); }
   finally { els.refreshClassroomsBtn.disabled = false; }
 }
 
@@ -1047,6 +1072,7 @@ function showAdminAccess(user, access) {
 }
 
 function showAdminError(error) {
+  databaseError(error);
   els.adminStatus.textContent = getGoogleLoginErrorMessage(error);
 }
 
@@ -1276,7 +1302,7 @@ els.teacherIdentityForm.addEventListener("submit", async (event) => {
   } catch (error) {
     if (revision !== state.identityRevision) return;
     state.teacherRole = "guest";
-    state.teacherVerificationError = `guest｜驗證未通過，無法取得優先等級。${error.message}`;
+    state.teacherVerificationError = `guest｜驗證未通過，無法取得優先等級。${databaseError(error)}`;
     updateTeacherAccessUi();
   } finally {
     setButtonBusy(els.teacherLoginBtn, false, "驗證優先權");
@@ -1299,7 +1325,7 @@ els.priorityTeacherForm.addEventListener("submit", async (event) => {
     await saveTeacherRole(els.priorityTeacherEmail.value, els.priorityTeacherLevel.value);
     els.adminStatus.textContent = "已儲存老師權限與通行碼設定。";
   } catch (error) {
-    els.adminStatus.textContent = error.message;
+    els.adminStatus.textContent = databaseError(error);
   }
 });
 
@@ -1319,7 +1345,7 @@ els.priorityTeacherList.addEventListener("click", async (event) => {
     await saveTeacher({ email: button.dataset.removeTeacher, remove: true });
     els.adminStatus.textContent = "已移除老師開課資格。";
   } catch (error) {
-    els.adminStatus.textContent = error.message;
+    els.adminStatus.textContent = databaseError(error);
   }
 });
 

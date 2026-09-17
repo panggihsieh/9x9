@@ -4,10 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數挑戰｜第三版全班同步比賽</title>
-  <link rel="stylesheet" href="./styles.css?v=20260917-ranking">
+  <link rel="stylesheet" href="./styles.css?v=20260917-quota-warning">
 </head>
 <body>
   <div class="app">
+    <aside id="quotaWarning" class="quota-warning" role="alert" hidden>
+      <strong>⚠ 本日額度用盡</strong>
+      <p>Firebase 回報資料庫配額不足，暫時無法開課、加入班級或同步成績。請等待每日配額重置後再試。</p>
+      <p>「暫停 5 分鐘」只是減少重試，並非配額恢復倒數。尚未同步的答案請保留在原裝置。</p>
+    </aside>
     <header class="topbar">
       <div class="brand">
         <div class="logo" aria-hidden="true">
@@ -256,6 +261,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?v=20260917-ranking"></script>
+  <script type="module" src="./app.js?v=20260917-quota-warning"></script>
 </body>
 </html>
