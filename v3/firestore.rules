@@ -145,16 +145,42 @@ service cloud.firestore {
         allow update, delete: if false;
       }
       match /students/{studentId} {
+        function taskPoints(task, points) {
+          let before = resource.data;
+          let after = request.resource.data;
+          let oldTasks = before.get('tasks', {});
+          let newTasks = after.get('tasks', {});
+          return oldTasks.get(task, false) == false && newTasks.get(task, false) == true
+            && newTasks.diff(oldTasks).affectedKeys().hasOnly([task])
+            && after.score == before.score + points;
+        }
+        function validScoring() {
+          let before = resource.data;
+          let after = request.resource.data;
+          let sameRound = after.get('roundVersion', 0) == before.get('roundVersion', 0)
+            && after.get('currentNumber', 24) == before.get('currentNumber', 24);
+          let unchanged = after.get('score', 0) == before.get('score', 0)
+            && after.get('tasks', {}) == before.get('tasks', {});
+          let nextRound = after.get('roundVersion', 0) == before.get('roundVersion', 0) + 1
+            && after.score == before.score
+            && after.currentNumber is int && after.currentNumber >= 2 && after.currentNumber <= 100
+            && after.tasks == {'factors': false, 'pairs': false, 'primes': false};
+          return (sameRound && (unchanged || taskPoints('factors', 14)
+            || taskPoints('pairs', 18) || taskPoints('primes', 14))) || nextRound;
+        }
         function currentStudent() {
           let room = get(/databases/$(database)/documents/classrooms/$(code)).data;
           return roomOpen(room) && request.resource.data.sessionId == room.sessionId
             && request.resource.data.lastSeen == request.time;
         }
         allow read: if true;
-        allow create: if currentStudent() && request.resource.data.keys().hasOnly([
+        allow create: if currentStudent() && request.resource.data.score == 0
+          && request.resource.data.tasks == {'factors': false, 'pairs': false, 'primes': false}
+          && request.resource.data.keys().hasOnly([
           'name', 'sessionId', 'score', 'joinedAt', 'lastSeen', 'onlineAt', 'status', 'tasks', 'currentNumber'
         ]);
-        allow update: if currentStudent() && resource.data.sessionId == request.resource.data.sessionId;
+        allow update: if currentStudent() && resource.data.sessionId == request.resource.data.sessionId
+          && validScoring();
         allow delete: if false;
       }
     }

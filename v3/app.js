@@ -741,7 +741,9 @@ function renderTaskCompletion() {
     const note = task === "factors" ? els.factorNote : task === "pairs" ? els.pairNote : els.primeNote;
     note.textContent = done ? "完成（已計分）" : "尚未完成";
     note.style.color = done ? "var(--green)" : "";
-    document.querySelector(`[data-check="${task}"]`).disabled = done || state.studentTaskBusy;
+    const checkButton = document.querySelector(`[data-check="${task}"]`);
+    checkButton.disabled = done || state.studentTaskBusy;
+    checkButton.textContent = done ? "已計分" : state.studentTaskBusy ? "儲存中…" : "確認";
     document.querySelector(`[data-clear="${task}"]`).disabled = done || state.studentTaskBusy;
   }
   els.nextNumberBtn.disabled = state.studentTaskBusy;

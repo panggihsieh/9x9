@@ -13,7 +13,7 @@ const code = 'T' + randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
 let adminToken, idToken, uid, checks = 0;
 function fields(data) {
   return Object.fromEntries(Object.entries(data).map(([key, value]) => [key,
-    value instanceof Date ? { timestampValue: value.toISOString() } : typeof value === 'string' ? { stringValue: value } : typeof value === 'boolean' ? { booleanValue: value } : { integerValue: String(value) }]));
+    value instanceof Date ? { timestampValue: value.toISOString() } : typeof value === 'string' ? { stringValue: value } : typeof value === 'boolean' ? { booleanValue: value } : typeof value === 'object' ? { mapValue: { fields: fields(value) } } : { integerValue: String(value) }]));
 }
 async function request(url, method, body, token) {
   const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -87,12 +87,24 @@ function expect(result, status, label) {
     const studentId = 'next-session_new-student';
     expect(await request(base + ':commit', 'POST', { writes: [
       { update: { name: prefix + 'classrooms/' + code + '/students/' + studentId,
-        fields: fields({ sessionId: 'next-session', name: 'new student', score: 0, onlineAt: Date.now() }) },
+        fields: fields({ sessionId: 'next-session', name: 'new student', score: 0, currentNumber: 24, tasks: { factors: false, pairs: false, primes: false }, onlineAt: Date.now() }) },
         updateTransforms: ['lastSeen', 'joinedAt'].map((fieldPath) => ({ fieldPath, setToServerValue: 'REQUEST_TIME' })) },
       { update: { name: prefix + 'classrooms/' + code, fields: fields({ studentCount: 1, studentHeartbeatId: studentId }) },
         updateMask: { fieldPaths: ['studentCount', 'studentHeartbeatId', 'lastStudentSeenAt', 'updatedAt'] },
         updateTransforms: ['lastStudentSeenAt', 'updatedAt'].map((fieldPath) => ({ fieldPath, setToServerValue: 'REQUEST_TIME' })) }
     ] }), 200, 'student join records server-side activity');
+    const studentPath = 'classrooms/' + code + '/students/' + studentId;
+    const taskState = { factors: true, pairs: false, primes: false };
+    expect(await write(studentPath, { score: 14, tasks: taskState }, ['lastSeen'], null, true), 200, 'first factor answer awards 14 points');
+    expect(await write(studentPath, { score: 28, tasks: taskState }, ['lastSeen'], null, true), 403, 'repeat same task rejected by database');
+    expect(await write(studentPath, { score: 42 }, ['lastSeen'], null, true), 403, 'legacy client score increment rejected');
+    expect(await write(studentPath, { score: 14, tasks: { factors: false, pairs: false, primes: false } }, ['lastSeen'], null, true), 403, 'cannot reset completion in the same round');
+    expect(await write(studentPath, { score: 14, tasks: taskState, status: 'joined' }, ['lastSeen'], null, true), 200, 'rejoin preserves score and completion');
+    expect(await write(studentPath, { score: 32, tasks: { ...taskState, pairs: true } }, ['lastSeen'], null, true), 200, 'different task awards its own points');
+    expect(await write(studentPath, { score: 46, tasks: { factors: true, pairs: true, primes: true } }, ['lastSeen'], null, true), 200, 'three tasks total 46 points');
+    expect(await write(studentPath, { currentNumber: 24, roundVersion: 1, tasks: { factors: false, pairs: false, primes: false } }, ['lastSeen'], null, true), 200, 'new round resets tasks without adding score');
+    expect(await write(studentPath, { score: 60, tasks: taskState }, ['lastSeen'], null, true), 200, 'new round can score once');
+    expect(await write(studentPath, { score: 74, tasks: taskState }, ['lastSeen'], null, true), 403, 'new round also rejects duplicate score');
     expect(await write('classrooms/' + code, { lastStudentSeenAt: oldTime }, [], null, true), 403, 'student cannot forge an old activity timestamp');
     expect(await write('classrooms/' + code, { status: 'released' }, ['releasedAt', 'updatedAt'], idToken, true), 200, 'owner releases classroom without deleting answers');
     expect(await write('classrooms/' + code + '/students/' + studentId, { score: 5 }, ['lastSeen'], null, true), 403, 'released classroom rejects student writes');
