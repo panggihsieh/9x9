@@ -84,10 +84,6 @@ const els = {
   adminLoginBtn: document.querySelector("#adminLoginBtn"),
   adminPanel: document.querySelector("#adminPanel"),
   adminStatus: document.querySelector("#adminStatus"),
-  adminEmail: document.querySelector("#adminEmail"),
-  adminName: document.querySelector("#adminName"),
-  adminRole: document.querySelector("#adminRole"),
-  adminPriority: document.querySelector("#adminPriority"),
   superAdminTools: document.querySelector("#superAdminTools"),
   adminClassroomList: document.querySelector("#adminClassroomList"),
   refreshClassroomsBtn: document.querySelector("#refreshClassroomsBtn"),
@@ -928,15 +924,9 @@ function escapeHtml(value) {
   }[char]));
 }
 
-function showAdminAccess(user, access) {
+function showAdminAccess(access) {
   els.adminPanel.classList.toggle("hidden", access.role !== "admin");
-  els.adminEmail.textContent = access.email || "尚未登入";
-  els.adminName.textContent = user?.displayName || "--";
-  els.adminRole.textContent = access.label;
-  els.adminRole.className = "role-badge";
-  els.adminRole.dataset.role = access.role || "";
-  els.adminPriority.textContent = access.priority;
-  els.adminStatus.textContent = access.role === "admin" ? "admin｜最高管理者" : "後台僅限 admin 登入";
+  els.adminStatus.textContent = access.role === "admin" ? "已登入，可釋放班級代碼。" : "請使用管理員 Google 帳號登入。";
   els.superAdminTools.classList.toggle("hidden", access.role !== "admin");
 }
 
@@ -978,7 +968,7 @@ function handleAdminAuth(user) {
   }
   state.authUser = user;
   state.adminAccess = access.role === "admin";
-  showAdminAccess(user, access);
+  showAdminAccess(access);
   els.adminLoginBtn.classList.toggle("hidden", state.adminAccess);
   els.teacherLogoutBtn.classList.toggle("hidden", !state.adminAccess);
   if (!state.adminAccess || !canUseDatabase()) return;
