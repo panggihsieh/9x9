@@ -119,6 +119,9 @@ const state = {
     primes: []
   },
   score: 0,
+  completedTasks: {},
+  studentTaskBusy: false,
+  studentRoundVersion: 0,
   authUser: null,
   teacherEmail: "",
   teacherRole: null,
@@ -585,6 +588,10 @@ async function joinStudent(code, name) {
     });
   });
 
+  state.completedTasks = {};
+  state.answers = { factors: [], pairs: [], pairDraft: [], primes: [] };
+  state.studentRoundVersion = 0;
+  renderAnswers();
   state.studentSessionId = joinedSessionId;
   startPresence();
   subscribeStudent(code);
@@ -621,9 +628,15 @@ function subscribeStudent(code) {
   state.unsubStudentDoc = onSnapshot(studentRef(code), (snapshot) => {
     const data = snapshot.data();
     if (!data) return;
+    if (state.currentNumber !== data.currentNumber || state.studentRoundVersion !== (data.roundVersion || 0)) {
+      state.answers = { factors: [], pairs: [], pairDraft: [], primes: [] };
+    }
+    state.completedTasks = data.tasks || {};
+    state.studentRoundVersion = data.roundVersion || 0;
     state.score = data.score || 0;
     state.currentNumber = data.currentNumber || state.currentNumber;
     els.studentScore.textContent = state.score;
+    renderAnswers();
     updateTargetFocus();
   });
 }
@@ -683,6 +696,7 @@ function updateTargetFocus() {
 
 function addAnswer(value) {
   const task = state.selectedTask;
+  if (state.studentTaskBusy || state.completedTasks[task]) return;
   if (task === "factors") {
     if (!state.answers.factors.includes(value)) state.answers.factors.push(value);
   } else if (task === "pairs") {
@@ -698,6 +712,7 @@ function addAnswer(value) {
 }
 
 function renderAnswers() {
+  renderTaskCompletion();
   renderAnswerZone(els.factorAnswer, state.answers.factors);
   renderAnswerZone(els.pairAnswer, [
     ...state.answers.pairs.map((pair) => pair.join(" × ")),
@@ -720,13 +735,28 @@ function renderAnswerZone(zone, values) {
   });
 }
 
+function renderTaskCompletion() {
+  for (const task of ["factors", "pairs", "primes"]) {
+    const done = Boolean(state.completedTasks[task]);
+    const note = task === "factors" ? els.factorNote : task === "pairs" ? els.pairNote : els.primeNote;
+    note.textContent = done ? "完成（已計分）" : "尚未完成";
+    note.style.color = done ? "var(--green)" : "";
+    document.querySelector(`[data-check="${task}"]`).disabled = done || state.studentTaskBusy;
+    document.querySelector(`[data-clear="${task}"]`).disabled = done || state.studentTaskBusy;
+  }
+  els.nextNumberBtn.disabled = state.studentTaskBusy;
+}
+
 async function checkStudentTask(task) {
+  if (!state.studentCode || !state.studentSessionId || state.studentTaskBusy || state.completedTasks[task]) return;
   const n = state.currentNumber;
+  const roundVersion = state.studentRoundVersion;
+  const sessionId = state.studentSessionId;
+  const ref = studentRef(state.studentCode);
   let correct = false;
   if (task === "factors") correct = sameNumberList(state.answers.factors, factorsOf(n));
   if (task === "pairs") correct = state.answers.pairDraft.length === 0 && samePairs(state.answers.pairs, factorPairs(n));
   if (task === "primes") correct = JSON.stringify(state.answers.primes) === JSON.stringify(primeFactorsOf(n));
-
   const note = task === "factors" ? els.factorNote : task === "pairs" ? els.pairNote : els.primeNote;
   if (!correct) {
     playSound("wrong");
@@ -734,21 +764,36 @@ async function checkStudentTask(task) {
     note.style.color = "var(--danger)";
     return;
   }
-
-  note.textContent = "完成";
-  note.style.color = "var(--green)";
-  await updateDoc(studentRef(state.studentCode), {
-    sessionId: state.studentSessionId,
-    [`tasks.${task}`]: true,
-    score: increment(task === "pairs" ? 18 : 14),
-    onlineAt: Date.now(),
-    lastSeen: serverTimestamp()
-  });
-  playSound("correct");
-  els.practiceFeedback.textContent = "已同步給老師 dashboard。";
+  state.studentTaskBusy = true;
+  renderTaskCompletion();
+  try {
+    const awarded = await runTransaction(db, async (tx) => {
+      const data = (await tx.get(ref)).data();
+      if (!data || data.sessionId !== sessionId || data.currentNumber !== n
+          || (data.roundVersion || 0) !== roundVersion) throw new Error("題目已更新，請依目前題目作答。");
+      if (data.tasks?.[task]) return false;
+      tx.update(ref, {
+        [`tasks.${task}`]: true,
+        score: (data.score || 0) + (task === "pairs" ? 18 : 14),
+        onlineAt: Date.now(), lastSeen: serverTimestamp()
+      });
+      return true;
+    });
+    if (state.studentSessionId === sessionId && state.currentNumber === n && state.studentRoundVersion === roundVersion) {
+      state.completedTasks[task] = true;
+    }
+    if (awarded) playSound("correct");
+    els.practiceFeedback.textContent = awarded ? "已計分並同步給老師。" : "這一小題已計分，不會重複加分。";
+  } catch (error) {
+    els.practiceFeedback.textContent = `計分未完成：${error.message}`;
+  } finally {
+    state.studentTaskBusy = false;
+    renderTaskCompletion();
+  }
 }
 
 function clearStudentTask(task) {
+  if (state.studentTaskBusy || state.completedTasks[task]) return;
   if (task === "pairs") {
     state.answers.pairs = [];
     state.answers.pairDraft = [];
@@ -759,21 +804,39 @@ function clearStudentTask(task) {
 }
 
 async function nextNumber() {
-  state.currentNumber = chooseNumber();
-  state.answers = { factors: [], pairs: [], pairDraft: [], primes: [] };
-  [els.factorNote, els.pairNote, els.primeNote].forEach((note) => {
-    note.textContent = "尚未完成";
-    note.style.color = "";
-  });
-  renderAnswers();
-  updateTargetFocus();
-  await updateDoc(studentRef(state.studentCode), {
-    sessionId: state.studentSessionId,
-    currentNumber: state.currentNumber,
-    tasks: { factors: false, pairs: false, primes: false },
-    onlineAt: Date.now(),
-    lastSeen: serverTimestamp()
-  });
+  if (!state.studentCode || !state.studentSessionId || state.studentTaskBusy) return;
+  const sessionId = state.studentSessionId;
+  const roundVersion = state.studentRoundVersion;
+  const ref = studentRef(state.studentCode);
+  const number = chooseNumber();
+  state.studentTaskBusy = true;
+  renderTaskCompletion();
+  try {
+    await runTransaction(db, async (tx) => {
+      const data = (await tx.get(ref)).data();
+      if (!data || data.sessionId !== sessionId || (data.roundVersion || 0) !== roundVersion) {
+        throw new Error("題目已更新，請稍後再試。");
+      }
+      tx.update(ref, {
+        currentNumber: number, roundVersion: roundVersion + 1,
+        tasks: { factors: false, pairs: false, primes: false },
+        onlineAt: Date.now(), lastSeen: serverTimestamp()
+      });
+    });
+    if (state.studentSessionId === sessionId && state.studentRoundVersion <= roundVersion + 1) {
+      state.currentNumber = number;
+      state.studentRoundVersion = roundVersion + 1;
+      state.completedTasks = {};
+      state.answers = { factors: [], pairs: [], pairDraft: [], primes: [] };
+      renderAnswers();
+      updateTargetFocus();
+    }
+  } catch (error) {
+    els.practiceFeedback.textContent = `換題失敗：${error.message}`;
+  } finally {
+    state.studentTaskBusy = false;
+    renderTaskCompletion();
+  }
 }
 
 async function endClassroom(code, sessionId = state.teacherSessionId) {
