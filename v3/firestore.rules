@@ -7,83 +7,16 @@ service cloud.firestore {
         && request.auth.token.firebase.sign_in_provider == 'google.com'
         && request.auth.token.email == 'teacher.hsieh@gmail.com';
     }
-    function grant(email) { return get(/databases/$(database)/documents/admins/$(email)).data; }
-    function roleFor(email, g) {
-      return email == 'teacher.hsieh@gmail.com' ? 'admin'
-        : g.role == 'auth' || (g.role == 'priorityTeacher' && g.get('priority', true)) ? 'auth' : 'guest';
-    }
-    function session() { return get(/databases/$(database)/documents/teacherSessions/$(request.auth.uid)).data; }
-    function guestSession(s) {
-      return signedIn() && s.email == request.auth.uid + '@guest.invalid'
-        && s.role == 'guest' && s.passcode == '';
-    }
-    function validSession() {
-      let s = session();
-      return guestSession(s) ? s.verifiedAt + duration.value(8, 'h') > request.time : validVerifiedSession();
-    }
-    function validVerifiedSession() {
-      let s = session();
-      let g = grant(s.email);
-      return signedIn() && s.verifiedAt + duration.value(8, 'h') > request.time
-        && s.verifiedAt >= g.updatedAt && s.passcode == g.passcode
-        && g.role in ['admin', 'auth', 'guest', 'priorityTeacher'] && s.role == roleFor(s.email, g);
-    }
     function ownsRoom(room) {
-      return validSession() && (room.get('teacherEmail', '') == session().email || session().role == 'admin');
+      return signedIn() && (room.teacherUid == request.auth.uid || isSuperAdmin());
     }
     function teacherFields(data) {
-      let s = session();
-      return data.teacherUid == request.auth.uid && data.teacherEmail == s.email
-        && data.teacherRole == s.role && data.teacherHasPriority == (s.role != 'guest')
+      return signedIn() && data.teacherUid == request.auth.uid
+        && data.teacherEmail == request.auth.uid + '@guest.invalid'
+        && data.teacherRole == 'guest' && data.teacherHasPriority == false
         && data.maxStudents == 100;
     }
-    match /admins/{email} {
-      allow read: if isSuperAdmin();
-      allow create, update: if isSuperAdmin()
-        && request.resource.data.keys().hasOnly(['email', 'role', 'passcode', 'updatedAt', 'updatedBy'])
-        && request.resource.data.email == email
-        && request.resource.data.passcode is string && request.resource.data.passcode.matches('^[0-9]{4}$')
-        && (email == 'teacher.hsieh@gmail.com' ? request.resource.data.role == 'admin' : request.resource.data.role in ['auth', 'guest'])
-        && request.resource.data.updatedAt == request.time && request.resource.data.updatedBy == request.auth.uid;
-      allow delete: if isSuperAdmin() && email != 'teacher.hsieh@gmail.com';
-    }
-    // Store a candidate first, then verify that immutable candidate. Repeated denied
-    // session writes cannot try different PINs without consuming another attempt.
-    match /teacherAttempts/{email} {
-      function candidate() {
-        let d = request.resource.data;
-        return signedIn() && d.keys().hasOnly(['uid', 'passcode', 'attemptedAt', 'count', 'windowStartedAt'])
-          && d.uid == request.auth.uid && d.passcode is string && d.passcode.matches('^[0-9]{4}$')
-          && d.attemptedAt == request.time;
-      }
-      allow create: if candidate() && request.resource.data.count == 1 && request.resource.data.windowStartedAt == request.time;
-      allow update: if candidate() && (
-        (resource.data.windowStartedAt + duration.value(15, 'm') <= request.time
-          && request.resource.data.count == 1 && request.resource.data.windowStartedAt == request.time)
-        || (request.resource.data.windowStartedAt == resource.data.windowStartedAt
-          && request.time >= resource.data.attemptedAt + duration.value(2, 's')
-          && request.resource.data.count == resource.data.count + 1 && request.resource.data.count <= 5));
-      allow read, delete: if false;
-    }
-    match /teacherSessions/{uid} {
-      function verified() {
-        let s = request.resource.data;
-        let a = get(/databases/$(database)/documents/teacherAttempts/$(s.email)).data;
-        let g = grant(s.email);
-        return signedIn() && uid == request.auth.uid
-          && s.keys().hasOnly(['email', 'passcode', 'role', 'verifiedAt'])
-          && a.uid == uid && a.passcode == s.passcode
-          && a.attemptedAt + duration.value(1, 'm') > request.time
-          && g.passcode == s.passcode && g.role in ['admin', 'auth', 'guest', 'priorityTeacher']
-          && s.role == roleFor(s.email, g) && s.verifiedAt == request.time;
-      }
-      allow create, update: if (signedIn() && uid == request.auth.uid
-        && guestSession(request.resource.data)
-        && request.resource.data.keys().hasOnly(['email', 'passcode', 'role', 'verifiedAt'])
-        && request.resource.data.verifiedAt == request.time) || verified();
-      allow get, delete: if signedIn() && uid == request.auth.uid;
-      allow list: if false;
-    }
+    // Retired credential collections have no client access; existing data is retained.
     function roomOpen(room) { return room.status in ['waiting', 'active']; }
     function presenceExpired(room) {
       let path = /databases/$(database)/documents/roomPresence/$(room.get('sessionId', 'legacy'));
@@ -154,16 +87,16 @@ service cloud.firestore {
           && d.studentCount <= resource.data.maxStudents;
       }
       allow read: if true;
-      allow create: if validSession() && freshRoom();
+      allow create: if signedIn() && freshRoom();
       allow update: if release() || maintain()
-        || (validSession() && reclaimable(resource.data) && freshRoom()
+        || (signedIn() && reclaimable(resource.data) && freshRoom()
           && request.resource.data.sessionId != resource.data.get('sessionId', '') && archived())
         || studentHeartbeat();
       // Releasing preserves previous sessions and answers instead of deleting data.
       allow delete: if false;
       match /sessions/{sessionId} {
         allow read: if true;
-        allow create: if validSession()
+        allow create: if signedIn()
           && sessionId == get(/databases/$(database)/documents/classrooms/$(code)).data.get('sessionId', 'legacy')
           && request.resource.data == get(/databases/$(database)/documents/classrooms/$(code)).data
           && reclaimable(request.resource.data);

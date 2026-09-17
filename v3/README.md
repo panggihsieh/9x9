@@ -1,51 +1,25 @@
-# 第三版：全班因數挑戰
+# 第三版：個人開課與全班同步比賽
 
-線上入口：https://x9-factor-game.web.app/v3/
+直接開啟 https://panggihsieh.github.io/9x9/v3/ 。首頁不提供第三版入口，但網址並非私人存取限制。
 
-## 老師驗證
+## 開課與管理
 
-畫面提供 `gmail` 與 `passcode` 兩個欄位。通行碼為 4 位數字，可含前導零，例如 `0037`。admin 透過 Google 登入後台，為每位老師設定或重設通行碼。首次設定必填，編輯留白則保留原碼。
+選擇教室模式、輸入班級代碼即可開課。開課沿用 Firebase 匿名登入，班級所有權由 `teacherUid` 核對；不再使用 Gmail、四碼通行碼、驗證嘗試或驗證紀錄。原有班級保留；同一 Firebase 身分可管理自己建立的班級。舊身分建立的班級需由原身分或管理員處理，或等雙方閒置五分鐘後重用。
 
-通行碼儲存在原有 Firestore `admins/{email}` 文件的 `passcode` 欄位（字串）。只有 Google 驗證的最高管理者可以讀寫老師文件；一般網頁不會下載老師名單或正確通行碼。通行碼以明碼存於受限文件，不是雜湊；有資料庫管理權限的人可以讀取。
+後台仍只允許 Google 驗證的 `teacher.hsieh@gmail.com` 管理班級。舊老師名單與驗證集合已關閉客戶端讀寫，保留資料、不執行資料刪除。使用匿名登入不代表只有站主能開課。
 
-老師驗證使用 Firebase 匿名身分綁定操作，由 Firestore Security Rules 比對 gmail 與 passcode。先記錄候選通行碼，再依規則建立驗證紀錄；不能直接跳過步驟取得 auth。同一 Gmail 每 15 分鐘最多嘗試 5 次（包括成功驗證），兩次嘗試間隔至少 2 秒。錯碼或無名單顯示 guest，不授予優先等級，也不能開課。
+學生以代碼及姓名加入，每班上限 100 人。成績每 15 秒合併同題進度，換題前與時間到會補送；只由老師查詢前 10 名。斷線未同步資料保存在原裝置。開始、釋放、計分與防重複規則仍由 Firestore 檢查。
 
-驗證有效 8 小時；重設通行碼、更新權限或移除老師後，舊驗證失效。重新整理後需再驗證。開課、開始及結束教室由 Firestore 規則檢查有效驗證與教室所有權。學生仍以班級代碼及姓名加入，保留既有免登入作答流程。
+## 開發與發布
 
-這是四碼存取驗證，不證明 Gmail 帳號所有權。每帳號的嘗試限制也可能被他人耗盡，造成暫時無法驗證。Spark 額度限制仍適用。
-
-## 設定與部署
-
-使用既有 Firebase Spark 專案，無需 Cloud Functions、Blaze 或其他後端。Authentication 啟用 Google（admin）與 Anonymous（老師驗證綁定），Firestore 儲存老師及班級資料。
+使用 Firebase Authentication 的 Anonymous 與 Google 提供者、Firestore 與 Hosting，不需要 Cloud Functions。測試優先使用本機模擬器，避免消耗正式配額。
 
 ```powershell
-node --test tests/frontend.test.cjs
-npx firebase-tools deploy --only "firestore:rules,hosting" --project x9-factor-game
+node --test tests/*.test.cjs tests/*.test.mjs
+npx --yes firebase-tools@13.35.1 emulators:exec --config firebase.emulators.json --only firestore,auth --project demo-factor-game "node tests/firestore-live.cjs"
+npx firebase-tools deploy --only "firestore,hosting" --project x9-factor-game
 ```
 
-既有老師不會被設定共用預設碼。admin 須至後台逐一設定 4 位數字；admin 若要在老師端開課，也須設定自己的通行碼。原名單未設定通行碼時無法驗證。
+上述模擬器指令搭配 Java 17；新版 Firebase CLI 的 Java 要求請依其版本設定。本機預覽：`python -m http.server 8765`。
 
-遠端回歸測試（使用本機已登入 Firebase CLI；建立並清除獨立測試紀錄）：
-
-```powershell
-$env:RUN_FIRESTORE_LIVE='x9-factor-game'
-node tests/firestore-live.cjs
-```
-
-測試覆蓋通行碼隱私、越權、錯碼、正確碼、前導零、嘗試限制、教室權限與通行碼重設撤銷。驗證嘗試每個 email 一筆、驗證紀錄每個 uid 一筆；過期資料不會繼續授權，可定期清理。
-
-本機預覽：`python -m http.server 8765`，開啟 http://localhost:8765/v3/ 。
-
-## 班級在線與閒置釋放
-
-- 老師每 15 秒回報一次；學生加入與在線回報也更新資料庫的伺服器活動時間。
-- 老師與學生都無活動滿 5 分鐘，代碼可重新使用。有人仍在線時不會釋放。
-- 開啟網站時會檢查；可見的老師／後台頁每 30 秒檢查並將到期班級標記為「已釋放」。全站沒有人開啟網頁時沒有背景排程，下次訪問或接管時依資料庫規則判斷到期。
-- 同一老師重新開啟原班級會恢復課堂，不清除學生或成績。短暫切換頁面與網路中斷保留 5 分鐘緩衝。
-- 結束班級會釋放代碼，保留答題資料。重新使用時以新 sessionId 建立課堂，舊學生文件保留，舊教室資料寫入 `classrooms/{code}/sessions/{舊sessionId}`。
-- 新學生文件 ID 包含 sessionId；舊頁面不能覆寫新課堂或歷史答案。
-- 後台「班級代碼管理」顯示老師在線情況、學生在線人數、最後活動時間及釋放按鈕。手動釋放會終止課堂，需要確認。
-- 無老師 Email 或無老師活動時間的舊版紀錄不自動接管，由 admin 確認後釋放。
-
-本機回歸測試：`node --test tests/frontend.test.cjs tests/room-lifecycle.test.mjs`。
-遠端測試包含在線保護、閒置自動釋放、接管、保留舊資料、舊版紀錄與舊頁面寫入限制。
+詳細節省用量的原因、同步與補傳限制，請見專案根目錄 README 的精簡排行榜模式說明。

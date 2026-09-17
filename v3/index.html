@@ -195,26 +195,6 @@
           </div>
 
           <section class="admin-tools hidden" id="superAdminTools">
-            <h3>優先老師維護</h3>
-            <form class="join-form admin-form" id="priorityTeacherForm">
-              <label>
-                老師 Email
-                <input id="priorityTeacherEmail" type="email" placeholder="teacher@gmail.com" required>
-              </label>
-              <label>
-                使用權限
-                <select id="priorityTeacherLevel">
-                  <option value="auth">auth｜優先老師</option>
-                  <option value="guest">guest｜一般老師</option>
-                </select>
-              </label>
-              <label>通行碼
-                <input id="priorityTeacherPasscode" type="password" autocomplete="new-password" placeholder="首次必填；留白保留原通行碼" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" aria-describedby="passcodeHelp">
-              </label>
-              <button type="submit">儲存老師設定</button>
-            </form>
-            <p id="passcodeHelp">通行碼為 4 位數字（可含前導零）；更新通行碼或權限後，老師須重新驗證。請將設定的通行碼提供給老師。</p>
-            <div class="priority-list" id="priorityTeacherList"></div>
             <div class="room-head classroom-management-heading">
               <h3>班級代碼管理</h3>
               <div class="room-actions">
@@ -244,6 +224,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?personal=1&v=20260917-quota-warning"></script>
+  <script type="module" src="./app.js?personal=2&v=20260917-quota-warning"></script>
 </body>
 </html>

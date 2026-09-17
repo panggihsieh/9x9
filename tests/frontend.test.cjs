@@ -11,20 +11,15 @@ function setup(fail=false){
  signInAnonymously:async()=>{auth.currentUser={uid:'anonymous-test'};},
  doc:(_,collection,id)=>({collection,id}),serverTimestamp:()=>123,
  setDoc:async(ref,data)=>{if(fail)throw new Error('quota');writes.push({ref,data});}});
- vm.runInContext(source.slice(source.indexOf('function updateTeacherAccessUi()'),source.indexOf('async function saveTeacher(')),context);
  vm.runInContext(source.slice(source.indexOf('async function ensureTeacherCanOpenClassroom()'),source.indexOf('async function ensureStudentCanJoinClassroom(')),context);
  return {state,auth,writes,open:()=>context.ensureTeacherCanOpenClassroom()};
 }
-test('personal classroom creates guest session without credential fields',async()=>{
+test('personal classroom signs in anonymously without credential database writes',async()=>{
  const app=setup();await app.open();
- assert.equal(app.writes[0].data.role,'guest');assert.equal(app.writes[0].data.passcode,'');
- assert.equal(app.state.accessReady,true);assert.equal(app.state.teacherHasPriority,false);
+ assert.equal(app.state.teacherRole,'guest');assert.equal(app.state.teacherEmail,'anonymous-test@guest.invalid');
+ assert.equal(app.writes.length,0);
 });
-test('existing guest session is reused; changing identity renews it',async()=>{
- const app=setup();await app.open();await app.open();assert.equal(app.writes.length,1);
- app.auth.currentUser={uid:'another'};await app.open();assert.equal(app.writes.length,2);
- assert.equal(app.writes[1].data.email,'another@guest.invalid');
-});
-test('failed session creation does not grant access',async()=>{
- const app=setup(true);await assert.rejects(app.open(),/quota/);assert.equal(app.state.accessReady,false);
+test('existing identity is reused without session database writes',async()=>{
+ const app=setup();await app.open();app.auth.currentUser={uid:'another'};await app.open();
+ assert.equal(app.state.teacherEmail,'another@guest.invalid');assert.equal(app.writes.length,0);
 });

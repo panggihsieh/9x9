@@ -41,23 +41,9 @@ function expect(result, status, label) {
     const signup = await request((emulator ? 'http://127.0.0.1:19099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=' : 'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=') + apiKey, 'POST', { returnSecureToken: true });
     expect(signup, 200, 'anonymous verification identity');
     idToken = signup.data.idToken; uid = signup.data.localId;
-    expect(await write('admins/' + email, { email, role: 'auth', passcode: '0037', updatedBy: 'live-test' }, ['updatedAt'], adminToken), 200, 'isolated teacher fixture');
-    expect(await request(base + '/admins/' + email, 'GET', null, idToken), 403, 'teacher cannot read stored passcode');
-    expect(await request(base + '/admins/' + email, 'GET'), 403, 'public cannot read stored passcode');
-    expect(await write('admins/' + email, { email, role: 'admin', passcode: '9999' }), 403, 'teacher cannot edit admin settings');
-    const session = (pin, role = 'auth') => write('teacherSessions/' + uid, { email, passcode: pin, role }, ['verifiedAt']);
-    expect(await session('0037'), 403, 'cannot skip verification attempt');
-    expect(await write('teacherAttempts/' + email, { uid, passcode: '0000', count: 1 }, ['attemptedAt', 'windowStartedAt']), 200, 'record wrong attempt');
-    expect(await session('0000'), 403, 'wrong passcode denied');
-    expect(await session('0037'), 403, 'cannot guess other passcodes within same attempt');
-    expect(await request(base + '/teacherAttempts/' + email, 'GET', null, idToken), 403, 'candidate records cannot be read');
-    expect(await write('teacherAttempts/' + email, { uid, passcode: '0037', count: 1 }, ['attemptedAt', 'windowStartedAt']), 403, 'cannot reset rate limit');
-    // Admin fixture reset avoids waiting 15 minutes and never changes a real teacher.
-    await request(base + '/teacherAttempts/' + email, 'DELETE', null, adminToken);
-    expect(await write('teacherAttempts/' + email, { uid, passcode: '0037', count: 1 }, ['attemptedAt', 'windowStartedAt']), 200, 'record correct four-digit attempt with leading zero');
-    expect(await session('0037', 'admin'), 403, 'auth teacher cannot claim admin role');
-    expect(await session('0037'), 200, 'correct Gmail and passcode grant auth');
-    const room = { code, sessionId: 'live-test', teacherUid: uid, teacherEmail: email, teacherRole: 'auth', teacherHasPriority: true, maxStudents: 100, studentCount: 0, status: 'waiting' };
+    expect(await request(base + '/admins/' + email, 'GET', null, idToken), 403, 'retired credential collection denies read');
+    expect(await write('teacherSessions/' + uid, {role:'admin'}),403,'retired verification route denies writes');
+    const room = { code, sessionId: 'live-test', teacherUid: uid, teacherEmail: uid + '@guest.invalid', teacherRole: 'guest', teacherHasPriority: false, maxStudents: 100, studentCount: 0, status: 'waiting' };
     expect(await write('classrooms/' + code, room, ['createdAt', 'updatedAt', 'teacherLastSeenAt', 'lastStudentSeenAt']), 200, 'verified teacher can create classroom');
     expect(await write('classrooms/' + code, { ...room, teacherRole: 'admin' }, ['updatedAt']), 403, 'cannot forge classroom priority');
     expect(await write('classrooms/' + code, { durationMinutes: 4 }, ['updatedAt'], idToken, true), 403, 'reject unsupported duration');
@@ -133,11 +119,7 @@ function expect(result, status, label) {
     expect(await takeover(), 403, 'ownerless legacy classroom requires explicit admin release');
     await write('classrooms/' + code, { status: 'released' }, ['releasedAt', 'updatedAt'], adminToken, true);
     expect(await takeover(), 200, 'admin-released legacy code can be reused');
-    expect(await write('admins/' + email, { email, role: 'auth', passcode: '1122', updatedBy: 'live-test' }, ['updatedAt'], adminToken), 200, 'reset isolated teacher passcode');
-    expect(await write('classrooms/' + code, { status: 'waiting' }, ['updatedAt'], idToken, true), 403, 'old verification revoked immediately after reset');
     const guestEmail = uid + '@guest.invalid';
-    expect(await write('teacherSessions/' + uid, { email: guestEmail, role: 'admin', passcode: '' }, ['verifiedAt']), 403, 'guest cannot forge admin session');
-    expect(await write('teacherSessions/' + uid, { email: guestEmail, role: 'guest', passcode: '' }, ['verifiedAt']), 200, 'guest session without credentials');
     const guestRoom = { ...room, code: code + 'G', teacherEmail: guestEmail, teacherRole: 'guest', teacherHasPriority: false };
     expect(await write('classrooms/' + code + 'G', guestRoom, ['createdAt', 'updatedAt', 'teacherLastSeenAt', 'lastStudentSeenAt']), 200, 'guest creates classroom with code only');
     expect(await write('classrooms/' + code + 'G', { status: 'active' }, ['updatedAt'], idToken, true), 200, 'guest starts own classroom');

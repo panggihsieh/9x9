@@ -229,11 +229,6 @@ h1 {
   min-width: min(100%, 15em);
 }
 
-.teacher-identity .passcode-field {
-  min-width: 7em;
-  flex: 1 1 7em;
-}
-
 .step-label {
   display: inline-flex;
   align-items: center;
