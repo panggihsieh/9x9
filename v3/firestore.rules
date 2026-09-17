@@ -182,6 +182,36 @@ service cloud.firestore {
               || (points > 0 && after.get('passCounts', {}).diff(before.get('passCounts', {})).affectedKeys().hasOnly([task])
                 && after.get('passCounts', {}).get(task, 0) == before.get('passCounts', {}).get(task, 0) + 1));
         }
+        function batchTask(task) {
+          let b = resource.data;
+          let a = request.resource.data;
+          let wasDone = b.get('tasks', {}).get(task, false);
+          let done = a.get('tasks', {}).get(task, false);
+          let wrong = a.get('wrongAttempts', {}).get(task, 0);
+          let revealed = a.get('revealedTasks', {}).get(task, false);
+          let earned = !wasDone && done && !revealed;
+          return done is bool && revealed is bool && wrong is int
+            && wrong >= b.get('wrongAttempts', {}).get(task, 0) && wrong <= 5
+            && (!wasDone || (done && revealed == b.get('revealedTasks', {}).get(task, false)
+              && wrong == b.get('wrongAttempts', {}).get(task, 0)))
+            && (!revealed || (done && wrong == 5))
+            && (done || wrong < 5)
+            && (!earned || wrong < 5)
+            && a.get('passCounts', {}).get(task, 0) == b.get('passCounts', {}).get(task, 0) + (earned ? 1 : 0);
+        }
+        function batchPoints(task, points) {
+          return !resource.data.get('tasks', {}).get(task, false)
+            && request.resource.data.get('tasks', {}).get(task, false)
+            && !request.resource.data.get('revealedTasks', {}).get(task, false) ? points : 0;
+        }
+        function batchedScore() {
+          let a = request.resource.data;
+          return a.get('roundVersion', 0) == resource.data.get('roundVersion', 0)
+            && a.currentNumber == resource.data.currentNumber
+            && a.diff(resource.data).affectedKeys().hasOnly(['score', 'tasks', 'passCounts', 'wrongAttempts', 'revealedTasks', 'onlineAt', 'lastSeen'])
+            && batchTask('factors') && batchTask('pairs') && batchTask('primes')
+            && a.score == resource.data.score + batchPoints('factors', 14) + batchPoints('pairs', 18) + batchPoints('primes', 14);
+        }
         function validScoring() {
           let before = resource.data;
           let after = request.resource.data;
@@ -217,7 +247,7 @@ service cloud.firestore {
           'name', 'sessionId', 'score', 'joinedAt', 'lastSeen', 'onlineAt', 'status', 'tasks', 'currentNumber'
         ]);
         allow update: if currentStudent() && resource.data.sessionId == request.resource.data.sessionId
-          && validScoring();
+          && (validScoring() || batchedScore());
         allow delete: if false;
       }
     }

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數挑戰｜第三版全班同步比賽</title>
-  <link rel="stylesheet" href="./styles.css?v=20260917-compact-teacher">
+  <link rel="stylesheet" href="./styles.css?v=20260917-ranking">
 </head>
 <body>
   <div class="app">
@@ -57,10 +57,6 @@
             <span>身分／優先等級</span>
             <strong id="teacherAuthStatus" class="role-badge" aria-live="polite">尚未驗證</strong>
           </div>
-          <div class="teacher-stat">
-            <span>全站同時上線</span>
-            <strong id="teacherGlobalOnline">讀取中</strong>
-          </div>
           <form id="teacherIdentityForm" class="teacher-identity">
             <label><span class="step-label">gmail <span class="step-number" aria-hidden="true">1</span></span>
               <input id="teacherGmail" type="email" value="guest@gmail.com" autocomplete="email" placeholder="請輸入個人帳號驗證優先權" aria-label="gmail" required>
@@ -95,32 +91,16 @@
 
           <div class="metrics">
             <div><span>登入人數</span><strong id="studentCount">0</strong></div>
-            <div><span>目前同時上線</span><strong id="onlineCount">0</strong></div>
             <div><span>上限</span><strong id="maxStudents">100</strong></div>
             <div><span>限制狀態</span><strong class="limit-status open" id="limitStatus">✓ 可加入</strong></div>
             <div><span>狀態</span><strong id="classStatus">等待中</strong></div>
           </div>
 
           <div class="dashboard-grid">
-            <section class="dashboard-column dashboard-column-main">
-              <h3>各項通過次數排行</h3>
-              <div class="task-status-grid">
-                <section class="task-status-column">
-                  <h4>項目 1｜因數</h4>
-                  <div class="task-status-list" id="factorStatusList"></div>
-                </section>
-                <section class="task-status-column">
-                  <h4>項目 2｜因數配對</h4>
-                  <div class="task-status-list" id="pairStatusList"></div>
-                </section>
-                <section class="task-status-column">
-                  <h4>項目 3｜質因數分解</h4>
-                  <div class="task-status-list" id="primeStatusList"></div>
-                </section>
-              </div>
-            </section>
             <section class="dashboard-column">
-              <h3>右｜前 10 名</h3>
+              <h3>總分排行榜｜前 10 名</h3>
+              <p>成績約每 15 秒同步；結束後可手動更新補傳成績。</p>
+              <button id="refreshRankingBtn" type="button">更新排行榜</button>
               <ol class="leaderboard" id="leaderboard"></ol>
             </section>
           </div>
@@ -155,7 +135,7 @@
         <section class="practice hidden" id="practiceView">
           <aside class="number-board" id="numberBoard"></aside>
           <section class="practice-main">
-            <p id="studentDifficultyLabel">教室模式</p>
+            <p id="studentDifficultyLabel">教室模式</p><p id="studentTimeLeft" role="timer">等待開始</p>
             <div class="practice-header">
               <div class="focus-number-card">
                 <span class="eyebrow">目前測驗數字</span>
@@ -276,6 +256,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?v=20260917-low-reads"></script>
+  <script type="module" src="./app.js?v=20260917-ranking"></script>
 </body>
 </html>

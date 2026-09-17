@@ -513,7 +513,7 @@ body[data-view="student"] .logo span { font-size: 19px; }
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(180px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
@@ -859,7 +859,7 @@ body[data-view="student"] .logo span { font-size: 19px; }
 body[data-view="student"] .classroom-setup,
 body[data-view="admin"] .classroom-setup { display: none; }
 .teacher-hero {
-  grid-template-columns: auto auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
   gap: 12px;
   padding: 14px;
   font-size: 14px;
@@ -878,7 +878,7 @@ body[data-view="admin"] .classroom-setup { display: none; }
 .teacher-hero button { font-size: 14px; padding: 10px 12px; }
 .teacher-hero .teacher-access-note { font-size: 13px; }
 @media (max-width: 980px) {
-  .teacher-hero { grid-template-columns: auto 1fr 1fr; }
+  .teacher-hero { grid-template-columns: auto 1fr; }
   .teacher-hero .teacher-identity { grid-column: 1 / -1; }
 }
 @media (max-width: 520px) {

@@ -1,3 +1,4 @@
+import { mergePendingScore } from "./pending-score.mjs";
 import { playSound } from "./sound.js?v=20260917-tick-tock";
 import { classroomCountdown } from "./countdown.mjs";
 import { chooseClassroomNumber } from "./question-difficulty.mjs?v=20260917-modes";
@@ -15,6 +16,8 @@ import {
   collection,
   query,
   where,
+  orderBy,
+  limit,
   writeBatch,
   deleteDoc,
   setDoc,
@@ -56,20 +59,13 @@ const els = {
   openClassBtn: document.querySelector("#openClassBtn"),
   teacherLogoutBtn: document.querySelector("#teacherLogoutBtn"),
   teacherAuthStatus: document.querySelector("#teacherAuthStatus"),
-  teacherGlobalOnline: document.querySelector("#teacherGlobalOnline"),
   teacherRoom: document.querySelector("#teacherRoom"),
   teacherRoomCode: document.querySelector("#teacherRoomCode"),
   studentCount: document.querySelector("#studentCount"),
-  onlineCount: document.querySelector("#onlineCount"),
   maxStudents: document.querySelector("#maxStudents"),
   limitStatus: document.querySelector("#limitStatus"),
   classStatus: document.querySelector("#classStatus"),
   leaderboard: document.querySelector("#leaderboard"),
-  taskStatusLists: {
-    factors: document.querySelector("#factorStatusList"),
-    pairs: document.querySelector("#pairStatusList"),
-    primes: document.querySelector("#primeStatusList")
-  },
   startClassBtn: document.querySelector("#startClassBtn"),
   endClassBtn: document.querySelector("#endClassBtn"),
   studentForm: document.querySelector("#studentForm"),
@@ -136,7 +132,6 @@ const state = {
   adminAccess: false,
   teacherHasPriority: false,
   teacherRegistered: false,
-  globalOnlineCount: null,
   accessReady: false,
   teacherVerificationError: "",
   teacherToken: "",
@@ -286,7 +281,7 @@ async function activityRoom(room, reader = getDoc) {
   return withPresence(room, presence.data());
 }
 async function writeStudentPresence() {
-  if (!state.studentCode || !state.studentSessionId || !canUseDatabase() || Date.now() - lastStudentActivityAt < 50_000) return;
+  if (!state.studentCode || !state.studentSessionId || state.studentFinished || !canUseDatabase() || Date.now() - lastStudentActivityAt < 50_000) return;
   const memberRef = studentRef(state.studentCode);
   const batch = writeBatch(db);
   batch.update(memberRef, { onlineAt: Date.now(), lastSeen: serverTimestamp() });
@@ -324,8 +319,6 @@ async function openClassroom(code) {
     return nextSessionId;
   });
   state.teacherSessionId = sessionId;
-  globalCountAt = 0;
-  try { localStorage.removeItem("factor-v3-online-cache"); } catch {}
 }
 
 async function updateCurrentRoom(code, sessionId, changes) {
@@ -360,6 +353,8 @@ function subscribeTeacher(code) {
   clearInterval(state.teacherCountdownTimer);
 
   let countdownRoom;
+  let finalTimer;
+  clearTimeout(state.teacherFinalTimer);
   let lastSecond;
   const updateCountdown = () => {
     const countdown = classroomCountdown(countdownRoom);
@@ -373,6 +368,14 @@ function subscribeTeacher(code) {
         : countdown.seconds % 2 ? "tick" : "tock");
     }
     lastSecond = countdown?.seconds;
+    if (countdown?.seconds === 0 && !finalTimer) {
+      // Allow one final student upload before freezing the top ten.
+      finalTimer = state.teacherFinalTimer = setTimeout(() => {
+        state.unsubTeacherStudents?.(); state.unsubTeacherRoom?.();
+        clearInterval(state.teacherHeartbeatTimer); clearInterval(state.teacherCountdownTimer);
+        els.classStatus.textContent = "已結束 · 排行榜已定格";
+      }, 20_000);
+    }
   };
   state.teacherCountdownTimer = setInterval(updateCountdown, 250);
 
@@ -381,7 +384,8 @@ function subscribeTeacher(code) {
     const room = snapshot.data();
     if (!roomIsOpen(room) || room.sessionId !== state.teacherSessionId) {
       stopTeacherSubscription();
-      els.teacherRoom.classList.add("hidden");
+      els.classStatus.textContent = "班級已結束 · 排行榜已定格";
+      els.startClassBtn.disabled = true;
       state.teacherCode = "";
       els.teacherAccessNote.textContent = "此課堂已釋放或代碼已重新使用，請重新開課。";
       return;
@@ -397,23 +401,25 @@ function subscribeTeacher(code) {
     document.querySelector('#durationOptions').disabled = room.status === "active";
     els.startClassBtn.disabled = room.status === "active";
     els.maxStudents.textContent = state.teacherMaxStudents;
+    els.studentCount.textContent = room.studentCount || 0;
+    els.limitStatus.textContent = (room.studentCount || 0) >= state.teacherMaxStudents ? "已滿" : "可加入";
   }, subscriptionError);
 
-  state.unsubTeacherStudents = onSnapshot(currentStudentsQuery(code, state.teacherSessionId), (snapshot) => {
+  state.unsubTeacherStudents = onSnapshot(query(currentStudentsQuery(code, state.teacherSessionId), orderBy("score", "desc"), limit(10)), (snapshot) => {
     const students = snapshot.docs
       .map((item) => ({ id: item.id, ...item.data() }))
       .filter((student) => !state.teacherSessionId || student.sessionId === state.teacherSessionId);
+    state.rankingCode = code; state.rankingSessionId = state.teacherSessionId;
     state.teacherStudents = students;
     renderTeacherDashboard(students);
   }, subscriptionError);
 
-  state.teacherRefreshTimer = setInterval(() => {
-    renderTeacherDashboard(state.teacherStudents);
-  }, PRESENCE_INTERVAL_MS);
+
 }
 
 function stopTeacherSubscription() {
   document.querySelector('#classroomModeHint').textContent = '請先選擇模式，再開啟教室。';
+  clearTimeout(state.teacherFinalTimer);
   clearInterval(state.teacherCountdownTimer);
   state.teacherCountdownTimer = null;
   clearInterval(state.teacherHeartbeatTimer);
@@ -433,9 +439,7 @@ function isStudentOnline(student) {
 }
 
 function updateTeacherAccessUi() {
-  const onlineLimit = classroomSettings.maxGlobalOnline || classroomSettings.maxStudents;
-  els.teacherGlobalOnline.textContent = state.globalOnlineCount === null
-    ? "讀取中" : `${state.globalOnlineCount} / ${onlineLimit}`;
+
   const displayRole = state.accessReady
     ? state.teacherEmail === SUPER_ADMIN_EMAIL ? "admin" : state.teacherRole : "guest";
   els.teacherAuthStatus.dataset.role = displayRole;
@@ -528,47 +532,6 @@ async function refreshTeacherAccess() {
   updateTeacherAccessUi();
 }
 
-let globalCountPromise;
-let globalCountAt = 0;
-async function refreshGlobalOnlineCount() {
-  if (Date.now() < quotaBackoffUntil) throw new Error("資料庫配額已用盡，背景查詢暫停中。");
-  try {
-    const cached = JSON.parse(localStorage.getItem("factor-v3-online-cache") || "null");
-    if (cached && Number.isFinite(cached.count) && cached.count >= 0
-        && cached.at <= Date.now() && Date.now() - cached.at < 60_000 && cached.at > globalCountAt) {
-      state.globalOnlineCount = cached.count; globalCountAt = cached.at;
-      updateTeacherAccessUi();
-    }
-  } catch {}
-  if (globalCountAt && Date.now() - globalCountAt < 60_000) return state.globalOnlineCount;
-  if (globalCountPromise) return globalCountPromise;
-  globalCountPromise = (async () => {
-    const rooms = await getDocs(activeRoomsQuery());
-    let count = 0;
-    for (const item of rooms.docs) {
-      const room = item.data();
-      const liveRoom = await activityRoom(room);
-      if (canReclaimRoom(liveRoom)) {
-        await runTransaction(db, async tx => {
-          const current = (await tx.get(item.ref)).data();
-          if (!current || !roomIsOpen(current)) return;
-          const latest = await activityRoom(current, ref => tx.get(ref));
-          if (canReclaimRoom(latest)) tx.update(item.ref, { status: "released", releasedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-        });
-        continue;
-      }
-      const members = await getDocs(currentStudentsQuery(item.id, room.sessionId));
-      count += members.docs.filter(member => isStudentOnline(member.data())).length;
-    }
-    state.globalOnlineCount = count;
-    globalCountAt = Date.now();
-    try { localStorage.setItem("factor-v3-online-cache", JSON.stringify({ count, at: globalCountAt })); } catch {}
-    updateTeacherAccessUi();
-    return count;
-  })().catch(error => { throw new Error(databaseError(error)); }).finally(() => { globalCountPromise = null; });
-  return globalCountPromise;
-}
-
 async function ensureTeacherCanOpenClassroom() {
   if (!state.accessReady || state.teacherEmail !== normalizeEmail(els.teacherGmail.value)
       || Date.now() >= state.teacherExpiresAt) {
@@ -586,30 +549,17 @@ async function ensureTeacherCanOpenClassroom() {
     state.teacherExpiresAt = Date.now() + 8 * 60 * 60 * 1000;
     updateTeacherAccessUi();
   }
-  const online = await refreshGlobalOnlineCount();
-  if (!state.teacherHasPriority && online >= classroomSettings.maxGlobalOnline) throw new Error("全站已滿，guest 暫時不能開課。");
+
 }
 
 async function ensureStudentCanJoinClassroom(code) {
   const roomSnapshot = await getDoc(classroomRef(code));
   if (!roomSnapshot.exists() || !roomIsOpen(roomSnapshot.data())) throw new Error("找不到開放中的班級，請向老師確認代碼。");
   const room = roomSnapshot.data();
-  const onlineCount = await refreshGlobalOnlineCount();
-  const onlineLimit = classroomSettings.maxGlobalOnline || classroomSettings.maxStudents;
-  if (!room.teacherHasPriority && onlineCount >= onlineLimit) {
-    throw new Error(`目前全站同時上線 ${onlineCount} 人，已達 ${onlineLimit} 人上限。這個班級不是優先權老師開課，暫時不能加入。`);
-  }
+
 }
 
 function renderTeacherDashboard(students) {
-  els.studentCount.textContent = students.length;
-  const onlineCount = students.filter((student) => isStudentOnline(student)).length;
-  const limitReached = students.length >= state.teacherMaxStudents;
-  els.onlineCount.textContent = onlineCount;
-  els.limitStatus.textContent = limitReached ? "✕ 已限制" : "✓ 可加入";
-  els.limitStatus.classList.toggle("closed", limitReached);
-  els.limitStatus.classList.toggle("open", !limitReached);
-
   const top = [...students]
     .sort((a, b) => (b.score || 0) - (a.score || 0))
     .slice(0, 10);
@@ -617,22 +567,7 @@ function renderTeacherDashboard(students) {
     ? top.map((student) => `<li><strong>${escapeHtml(student.name)}</strong> ${student.score || 0} 分</li>`).join("")
     : "<li>等待學生加入</li>";
 
-  for (const task of ["factors", "pairs", "primes"]) {
-    const list = els.taskStatusLists[task];
-    list.replaceChildren();
-    const ranked = [...students].sort((a, b) => (b.passCounts?.[task] || 0) - (a.passCounts?.[task] || 0)
-      || String(a.name).localeCompare(String(b.name), "zh-Hant"));
-    if (!ranked.length) list.textContent = "等待學生加入";
-    ranked.forEach((student, index) => {
-      const row = document.querySelector("#taskStatusRowTemplate").content.firstElementChild.cloneNode(true);
-      row.querySelector("[data-name]").textContent = `${index + 1}. ${student.name}`;
-      const count = student.passCounts?.[task] || 0;
-      const cell = row.querySelector("[data-state]");
-      cell.textContent = `${count} 次`;
-      cell.classList.toggle("done", count > 0);
-      list.append(row);
-    });
-  }
+
 }
 
 async function joinStudent(code, name) {
@@ -684,8 +619,11 @@ async function joinStudent(code, name) {
   state.studentRoundVersion = 0;
   renderAnswers();
   state.studentSessionId = joinedSessionId;
-  globalCountAt = 0;
-  try { localStorage.removeItem("factor-v3-online-cache"); } catch {}
+  state.studentFinished = false;
+  state.studentReleased = false;
+  studentSavedData = null;
+  pendingScore = null;
+  try { pendingScore = JSON.parse(localStorage.getItem(pendingKey()) || "null"); } catch {}
   startPresence();
   subscribeStudent(code);
 }
@@ -695,6 +633,7 @@ function subscribeStudent(code) {
   state.unsubStudentDoc?.();
 
   let wasActive = false;
+  clearInterval(state.studentCountdownTimer);
   state.unsubStudentRoom = onSnapshot(classroomRef(code), (snapshot) => {
     const room = snapshot.data();
     if (!roomIsOpen(room)) {
@@ -707,6 +646,22 @@ function subscribeStudent(code) {
     }
     state.studentSessionId = room.sessionId || state.studentSessionId;
     state.studentDifficulty = room.difficulty || "";
+    clearInterval(state.studentCountdownTimer);
+    const tick = () => {
+      const remaining = classroomCountdown(room);
+      document.querySelector('#studentTimeLeft').textContent = remaining ? `剩餘 ${remaining.text}` : "等待開始";
+      if (remaining?.seconds === 0 && !state.studentFinished && studentSavedData) {
+        state.studentFinished = true;
+        renderTaskCompletion();
+        stopPresence();
+        clearInterval(state.studentCountdownTimer);
+        state.unsubStudentRoom?.(); state.unsubStudentDoc?.();
+        (async () => { while (pendingScore) await flushPendingScore(); })().then(() => { els.practiceFeedback.textContent = "時間到，成績已同步。"; })
+          .catch(error => { els.practiceFeedback.textContent = `時間到，未同步答案已保留：${databaseError(error)}`; });
+      }
+    };
+    state.studentCountdownTimer = setInterval(tick, 250);
+    tick();
     document.querySelector('#studentDifficultyLabel').textContent = `教室模式：${{ beginner: "初級", intermediate: "中級", advanced: "高級" }[state.studentDifficulty] || "漸進練習"}`;
     if (room.status === "active") {
       if (!wasActive) playSound("start");
@@ -727,15 +682,7 @@ function subscribeStudent(code) {
       state.answers = { factors: [], pairs: [], pairDraft: [], primes: [] };
     }
     lastStudentActivityAt = timestampMillis(data.lastSeen);
-    state.completedTasks = data.tasks || {};
-    state.wrongAttempts = data.wrongAttempts || {};
-    state.revealedTasks = data.revealedTasks || {};
-    state.studentRoundVersion = data.roundVersion || 0;
-    state.score = data.score || 0;
-    state.currentNumber = data.currentNumber || state.currentNumber;
-    els.studentScore.textContent = state.score;
-    renderAnswers();
-    updateTargetFocus();
+    applyStudentData(data);
   }, subscriptionError);
 }
 
@@ -755,11 +702,13 @@ function stopPresence() {
 }
 
 function showStudentEnded() {
+  state.studentReleased = true;
+  clearInterval(state.studentCountdownTimer);
   stopPresence();
   state.unsubStudentRoom?.();
   state.unsubStudentDoc?.();
-  state.studentCode = "";
-  state.studentSessionId = "";
+  state.studentFinished = true;
+  if (pendingScore) els.practiceFeedback.textContent = "班級已釋放，未同步答案仍保留在這台裝置。";
   els.practiceView.classList.add("hidden");
   els.studentLobby.classList.remove("hidden");
   els.lobbyTitle.textContent = "班級已結束";
@@ -841,69 +790,85 @@ function renderTaskCompletion() {
       : state.wrongAttempts[task] ? `答錯 ${state.wrongAttempts[task]} / 5 次` : "尚未完成";
     note.style.color = done ? "var(--green)" : "";
     const checkButton = document.querySelector(`[data-check="${task}"]`);
-    checkButton.disabled = done || state.studentTaskBusy;
+    checkButton.disabled = done || state.studentTaskBusy || state.studentFinished;
     checkButton.textContent = done ? "已完成" : state.studentTaskBusy ? "儲存中…" : "確認";
     document.querySelector(`[data-clear="${task}"]`).disabled = done || state.studentTaskBusy;
   }
-  els.nextNumberBtn.disabled = state.studentTaskBusy;
+  els.nextNumberBtn.disabled = state.studentTaskBusy || state.studentFinished;
 }
 
-async function checkStudentTask(task) {
-  if (!state.studentCode || !state.studentSessionId || state.studentTaskBusy || state.completedTasks[task]) return;
-  const n = state.currentNumber;
-  const roundVersion = state.studentRoundVersion;
-  const sessionId = state.studentSessionId;
-  const ref = studentRef(state.studentCode);
-  let correct = false;
-  if (task === "factors") correct = sameNumberList(state.answers.factors, factorsOf(n));
-  if (task === "pairs") correct = state.answers.pairDraft.length === 0 && samePairs(state.answers.pairs, factorPairs(n));
-  if (task === "primes") correct = JSON.stringify(state.answers.primes) === JSON.stringify(primeFactorsOf(n));
-  state.studentTaskBusy = true;
-  renderTaskCompletion();
-  try {
-    const result = await runTransaction(db, async (tx) => {
-      const data = (await tx.get(ref)).data();
-      if (!data || data.sessionId !== sessionId || data.currentNumber !== n
-          || (data.roundVersion || 0) !== roundVersion) throw new Error("題目已更新，請依目前題目作答。");
-      if (data.tasks?.[task]) return { done: true, revealed: Boolean(data.revealedTasks?.[task]), awarded: false };
-      if (!correct) {
-        const attempts = Math.min(5, (data.wrongAttempts?.[task] || 0) + 1);
-        const revealed = attempts >= 5;
-        tx.set(presenceRef(sessionId), { code: state.studentCode, sessionId,
-          lastStudentSeenAt: serverTimestamp(), studentHeartbeatId: ref.id }, { merge: true });
-        tx.update(ref, {
-          [`wrongAttempts.${task}`]: attempts,
-          ...(revealed ? { [`tasks.${task}`]: true, [`revealedTasks.${task}`]: true } : {}),
-          onlineAt: Date.now(), lastSeen: serverTimestamp()
-        });
-        return { done: revealed, revealed, attempts, awarded: false };
-      }
-      tx.set(presenceRef(sessionId), { code: state.studentCode, sessionId,
-        lastStudentSeenAt: serverTimestamp(), studentHeartbeatId: ref.id }, { merge: true });
-      tx.update(ref, {
-        [`tasks.${task}`]: true,
-        score: (data.score || 0) + (task === "pairs" ? 18 : 14),
-        [`passCounts.${task}`]: (data.passCounts?.[task] || 0) + 1,
-        onlineAt: Date.now(), lastSeen: serverTimestamp()
-      });
-      return { done: true, revealed: false, awarded: true };
-    });
-    if (state.studentSessionId === sessionId && state.currentNumber === n && state.studentRoundVersion === roundVersion) {
-      state.completedTasks[task] = result.done;
-      state.revealedTasks[task] = result.revealed;
-      if (result.attempts) state.wrongAttempts[task] = result.attempts;
-      renderAnswers();
-    }
-    playSound(result.awarded ? "correct" : "wrong");
-    els.practiceFeedback.textContent = result.awarded ? "已計分並同步給老師。"
-      : result.revealed ? "答錯 5 次，已顯示正確答案，本小題不計分。"
-      : result.done ? "這一小題已完成，不會重複加分。" : `還不正確，已答錯 ${result.attempts} / 5 次。`;
-  } catch (error) {
-    els.practiceFeedback.textContent = `計分未完成：${databaseError(error)}`;
-  } finally {
-    state.studentTaskBusy = false;
-    renderTaskCompletion();
+function pendingKey() { return `factor-pending:${state.studentId}:${state.studentCode}:${state.studentSessionId}`; }
+let pendingScore = null;
+let scoreFlush = null;
+let studentSavedData = null;
+function storePending(value) {
+  // Save before acknowledging the answer. Storage failures leave the answer retryable.
+  if (value) localStorage.setItem(pendingKey(), JSON.stringify(value));
+  else localStorage.removeItem(pendingKey());
+  pendingScore = value;
+}
+function applyStudentData(data) {
+  if (!data) return;
+  studentSavedData = data;
+  let view = data;
+  if (pendingScore) {
+    try { view = { ...data, ...mergePendingScore(data, pendingScore) }; }
+    catch (error) { els.practiceFeedback.textContent = error.message; }
   }
+  state.completedTasks = view.tasks || {};
+  state.wrongAttempts = view.wrongAttempts || {};
+  state.revealedTasks = view.revealedTasks || {};
+  state.studentRoundVersion = view.roundVersion || 0;
+  state.score = view.score || 0;
+  state.currentNumber = view.currentNumber || state.currentNumber;
+  els.studentScore.textContent = state.score;
+  renderAnswers();
+  updateTargetFocus();
+}
+async function flushPendingScore() {
+  if (scoreFlush) return scoreFlush;
+  if (!pendingScore) return;
+  const pending = JSON.parse(JSON.stringify(pendingScore));
+  const key = pendingKey();
+  const code = state.studentCode;
+  const ref = studentRef(code);
+  scoreFlush = (async () => {
+    const saved = await runTransaction(db, async tx => {
+      const data = (await tx.get(ref)).data();
+      if (!data) throw new Error("找不到學生紀錄，尚未同步的答案已保留。");
+      const values = mergePendingScore(data, pending);
+      tx.update(ref, { ...values, onlineAt: Date.now(), lastSeen: serverTimestamp() });
+      tx.set(presenceRef(pending.sessionId), { code, sessionId: pending.sessionId,
+        lastStudentSeenAt: serverTimestamp(), studentHeartbeatId: ref.id }, { merge: true });
+      return { ...data, ...values };
+    });
+    if (key !== pendingKey()) return;
+    // Answers entered while a request was in flight remain queued for the next flush.
+    if (JSON.stringify(pendingScore) === JSON.stringify(pending)) storePending(null);
+    applyStudentData(saved);
+    lastStudentActivityAt = Date.now();
+    els.practiceFeedback.textContent = pendingScore ? "新答案已暫存，等待同步。" : "成績已同步。";
+  })().finally(() => { scoreFlush = null; });
+  return scoreFlush;
+}
+async function checkStudentTask(task) {
+  if (!state.studentCode || !state.studentSessionId || state.studentTaskBusy || state.studentFinished || !studentSavedData || state.completedTasks[task]) return;
+  const n = state.currentNumber;
+  const correct = task === "factors" ? sameNumberList(state.answers.factors, factorsOf(n))
+    : task === "pairs" ? state.answers.pairDraft.length === 0 && samePairs(state.answers.pairs, factorPairs(n))
+    : JSON.stringify(state.answers.primes) === JSON.stringify(primeFactorsOf(n));
+  try {
+    const wrong = correct ? state.wrongAttempts[task] || 0 : Math.min(5, (state.wrongAttempts[task] || 0) + 1);
+    const pending = pendingScore ? JSON.parse(JSON.stringify(pendingScore)) : {
+      sessionId: state.studentSessionId, number: n, round: state.studentRoundVersion, targets: {}
+    };
+    pending.targets[task] = { done: correct || wrong >= 5, revealed: !correct && wrong >= 5, wrong };
+    storePending(pending);
+    applyStudentData(studentSavedData);
+    playSound(correct ? "correct" : "wrong");
+    els.practiceFeedback.textContent = correct ? "答對！已暫存，15 秒內同步成績。"
+      : wrong >= 5 ? "答錯 5 次，已顯示答案，本小題不計分。" : `還不正確，已答錯 ${wrong} / 5 次。`;
+  } catch (error) { els.practiceFeedback.textContent = `未能暫存，請重試：${error.message}`; }
 }
 
 function clearStudentTask(task) {
@@ -918,7 +883,7 @@ function clearStudentTask(task) {
 }
 
 async function nextNumber() {
-  if (!state.studentCode || !state.studentSessionId || state.studentTaskBusy) return;
+  if (!state.studentCode || !state.studentSessionId || state.studentTaskBusy || state.studentFinished) return;
   const sessionId = state.studentSessionId;
   const roundVersion = state.studentRoundVersion;
   const ref = studentRef(state.studentCode);
@@ -926,6 +891,7 @@ async function nextNumber() {
   state.studentTaskBusy = true;
   renderTaskCompletion();
   try {
+    while (pendingScore) await flushPendingScore();
     await runTransaction(db, async (tx) => {
       const data = (await tx.get(ref)).data();
       if (!data || data.sessionId !== sessionId || (data.roundVersion || 0) !== roundVersion) {
@@ -1015,8 +981,7 @@ async function loadAdminClassrooms() {
     const rooms = await getDocs(activeRoomsQuery());
     const entries = await Promise.all(rooms.docs.filter((item) => item.data().status !== "released").map(async (item) => {
       const room = await activityRoom(item.data());
-      const members = await getDocs(currentStudentsQuery(item.id, room.sessionId));
-      const online = members.docs.filter((member) => member.data().sessionId === room.sessionId && isStudentOnline(member.data())).length;
+      const online = Date.now() - timestampMillis(room.lastStudentSeenAt) <= ONLINE_WINDOW_MS;
       return { code: item.id, room, online };
     }));
     if (!state.adminAccess) return;
@@ -1030,14 +995,14 @@ async function loadAdminClassrooms() {
       title.textContent = `${code}｜${teacherOnline || online ? "在線" : canReclaimRoom(room) ? "閒置已到期" : "閒置／保留中"}`;
       const detail = document.createElement("small");
       const lastSeen = Math.max(timestampMillis(room.teacherLastSeenAt), timestampMillis(room.lastStudentSeenAt), timestampMillis(room.updatedAt));
-      detail.textContent = `${room.teacherEmail || "舊版：無老師 Email"}｜老師${teacherOnline ? "在線" : "離線"}｜在線學生 ${online} 人｜最後活動 ${lastSeen ? new Date(lastSeen).toLocaleString("zh-TW") : "未知"}`;
+      detail.textContent = `${room.teacherEmail || "舊版：無老師 Email"}｜老師${teacherOnline ? "在線" : "離線"}｜學生近期活動 ${online ? "有" : "無"}｜最後活動 ${lastSeen ? new Date(lastSeen).toLocaleString("zh-TW") : "未知"}`;
       info.append(title, detail);
       const release = document.createElement("button");
       release.type = "button";
       release.className = "danger";
       release.textContent = "釋放班級代碼";
       release.addEventListener("click", async () => {
-        if (!confirm(`釋放 ${code}？這會結束該課堂，保留既有答題資料。畫面載入時有 ${online} 位學生在線。`)) return;
+        if (!confirm(`釋放 ${code}？這會結束該課堂，保留既有答題資料。此操作將結束學生練習。`)) return;
         release.disabled = true;
         try {
           await runTransaction(db, async (tx) => {
@@ -1178,7 +1143,7 @@ function handleAdminAuth(user) {
   els.adminLoginBtn.classList.toggle("hidden", state.adminAccess);
   els.teacherLogoutBtn.classList.toggle("hidden", !state.adminAccess);
   if (!state.adminAccess || !canUseDatabase()) return;
-  loadAdminClassrooms();
+  if (!state.adminClassroomsLoaded) { state.adminClassroomsLoaded = true; loadAdminClassrooms(); }
   state.unsubTeacherGrants = onSnapshot(collection(db, "admins"), (snapshot) => {
     if (revision !== state.authRevision) return;
     state.teacherGrants = snapshot.docs.map((item) => ({ ...item.data(), id: item.id }));
@@ -1247,12 +1212,12 @@ els.startClassBtn.addEventListener("click", async () => {
 });
 
 els.endClassBtn.addEventListener("click", async () => {
-  if (!state.teacherCode || !confirm(`確定結束 ${state.teacherCode} 並釋放代碼？答題資料會保留。`)) return;
+  if (!state.teacherCode || !confirm(`請先確認學生已顯示「成績已同步」。確定結束 ${state.teacherCode} 並釋放代碼？釋放後不再接受補傳，已儲存的資料會保留。`)) return;
   try {
     await endClassroom(state.teacherCode);
     stopTeacherSubscription();
-    els.teacherRoom.classList.add("hidden");
-    renderTeacherDashboard([]);
+    els.classStatus.textContent = "班級已結束 · 排行榜已定格";
+    els.startClassBtn.disabled = true;
     state.teacherCode = "";
     state.teacherSessionId = "";
   } catch (error) { els.teacherAccessNote.textContent = databaseError(error); }
@@ -1371,16 +1336,6 @@ getRedirectResult(auth).catch((error) => {
 
 onAuthStateChanged(auth, handleAdminAuth);
 updateTeacherAccessUi();
-if (document.body.dataset.view !== "student" && canUseDatabase()) refreshGlobalOnlineCount().catch(error => { els.teacherGlobalOnline.textContent = "暫時無法取得"; els.teacherAccessNote.textContent = error.message; });
-
-setInterval(async () => {
-  if (!canUseDatabase() || document.body.dataset.view === "student") return;
-  try {
-    await refreshGlobalOnlineCount();
-    if (document.body.dataset.view === "admin" && state.adminAccess) await loadAdminClassrooms();
-  } catch { /* Retry on the next visible-page check. */ }
-}, 60_000);
-
 renderNumberBoard();
 renderAnswers();
 
@@ -1389,12 +1344,35 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     stopTeacherSubscription();
     stopPresence();
+    clearInterval(state.studentCountdownTimer);
     state.unsubStudentRoom?.(); state.unsubStudentDoc?.();
     state.unsubTeacherGrants?.();
     return;
   }
   if (!canUseDatabase()) return;
   if (state.teacherCode) { subscribeTeacher(state.teacherCode); startTeacherHeartbeat(state.teacherCode); }
-  if (state.studentCode) { subscribeStudent(state.studentCode); startPresence(); }
+  if (state.studentCode && !state.studentFinished) { subscribeStudent(state.studentCode); startPresence(); }
   if (state.adminAccess && document.body.dataset.view === "admin") handleAdminAuth(auth.currentUser);
+});
+
+setInterval(() => {
+  if (pendingScore && !state.studentReleased && canUseDatabase()) flushPendingScore().catch(error => {
+    els.practiceFeedback.textContent = `尚未同步，答案已保留：${databaseError(error)}`;
+  });
+}, 15_000);
+window.addEventListener("online", () => { if (!state.studentReleased) flushPendingScore().catch(subscriptionError); });
+window.addEventListener("beforeunload", event => {
+  if (!pendingScore) return;
+  event.preventDefault(); event.returnValue = "";
+});
+
+document.querySelector('#refreshRankingBtn').addEventListener('click', async event => {
+  if (!state.rankingCode || !state.rankingSessionId) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const result = await getDocs(query(currentStudentsQuery(state.rankingCode, state.rankingSessionId), orderBy('score', 'desc'), limit(10)));
+    renderTeacherDashboard(result.docs.map(item => item.data()));
+  } catch (error) { els.teacherAccessNote.textContent = databaseError(error); }
+  finally { button.disabled = false; }
 });

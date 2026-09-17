@@ -143,6 +143,23 @@ function expect(result, status, label) {
     expect(await write('classrooms/' + code + 'G', { status: 'active' }, ['updatedAt'], idToken, true), 200, 'guest starts own classroom');
     expect(await write('classrooms/' + code + 'G', { teacherHasPriority: true }, ['updatedAt'], idToken, true), 403, 'guest cannot elevate priority');
     if (emulator) {
+      // Verify server-side ranking selects this session's top ten, not the entire roster.
+      const rankingPaths = [];
+      for (let i=0;i<12;i++) {
+        const path = 'classrooms/'+code+'G/students/rank-'+i;
+        rankingPaths.push(path);
+        await write(path,{name:'Test '+i,sessionId:guestRoom.sessionId,score:i*14},[],adminToken);
+      }
+      const oldPath = 'classrooms/'+code+'G/students/old-rank'; rankingPaths.push(oldPath);
+      await write(oldPath,{name:'Old',sessionId:'old',score:99999},[],adminToken);
+      const ranked = await request(base+'/classrooms/'+code+'G:runQuery','POST',{structuredQuery:{
+        from:[{collectionId:'students'}],where:{fieldFilter:{field:{fieldPath:'sessionId'},op:'EQUAL',value:{stringValue:guestRoom.sessionId}}},
+        orderBy:[{field:{fieldPath:'score'},direction:'DESCENDING'}],limit:10
+      }});
+      expect(ranked,200,'top ten query accepted');
+      const scores=ranked.data.filter(x=>x.document).map(x=>Number(x.document.fields.score.integerValue));
+      assert.deepEqual(scores,[154,140,126,112,98,84,70,56,42,28]); checks++; console.log('PASS query excludes old session and returns exactly top ten');
+      for (const path of rankingPaths) await request(base+'/'+path,'DELETE',null,adminToken);
       const presencePath = 'roomPresence/' + guestRoom.sessionId;
       expect(await write(presencePath, { code: code + 'G', sessionId: guestRoom.sessionId }, ['teacherLastSeenAt'], idToken), 200, 'teacher writes independent presence');
       expect(await write(presencePath, { code: code + 'G', sessionId: guestRoom.sessionId, teacherLastSeenAt: oldTime }, [], idToken, true), 403, 'cannot backdate teacher presence');
@@ -150,6 +167,14 @@ function expect(result, status, label) {
       expect(await write('classrooms/' + code + 'G', {status:'released'}, ['releasedAt','updatedAt'], null, true), 403, 'fresh separate teacher presence prevents idle release');
       const memberPath = 'classrooms/' + code + 'G/students/presence-test';
       await write(memberPath, {sessionId:guestRoom.sessionId, score:0, tasks:{factors:false,pairs:false,primes:false}}, ['lastSeen'], adminToken);
+      await write(memberPath, {currentNumber:24}, [], adminToken, true);
+      const batchScore = {score:46,tasks:{factors:true,pairs:true,primes:true},passCounts:{factors:1,pairs:1,primes:1},wrongAttempts:{factors:0,pairs:0,primes:0},revealedTasks:{factors:false,pairs:false,primes:false}};
+      expect(await write(memberPath,batchScore,['lastSeen'],null,true),200,'batched three answers accepted');
+      expect(await write(memberPath,batchScore,['lastSeen'],null,true),200,'retry same batch is idempotent');
+      expect(await write(memberPath,{...batchScore,score:92},['lastSeen'],null,true),403,'batch cannot award points twice');
+      expect(await write(memberPath,{score:46,currentNumber:30,roundVersion:1,tasks:{factors:false,pairs:false,primes:false},wrongAttempts:{},revealedTasks:{}},['lastSeen'],null,true),200,'advance after batch retains score');
+      expect(await write(memberPath,{score:46,tasks:{factors:true,pairs:true,primes:true},wrongAttempts:{factors:5,pairs:5,primes:5},revealedTasks:{factors:true,pairs:true,primes:true}},['lastSeen'],null,true),200,'batched five wrong attempts reveal without score');
+      expect(await write(memberPath,{score:92},['lastSeen'],null,true),403,'revealed batch cannot add score');
       const before = await request(base + '/classrooms/' + code + 'G', 'GET', null, adminToken);
       expect(await request(base + ':commit', 'POST', {writes:[
         {update:{name:prefix+memberPath,fields:fields({onlineAt:Date.now()})}, updateMask:{fieldPaths:['onlineAt','lastSeen']}, updateTransforms:[{fieldPath:'lastSeen',setToServerValue:'REQUEST_TIME'}]},

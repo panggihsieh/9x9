@@ -27,7 +27,8 @@
       "functions/**",
       "tests/**",
       "package.json",
-      "package-lock.json"
+      "package-lock.json",
+      "firestore.indexes.json"
     ],
     "headers": [
       {
@@ -42,6 +43,7 @@
     ]
   },
   "firestore": {
-    "rules": "v3/firestore.rules"
+    "rules": "v3/firestore.rules",
+    "indexes": "firestore.indexes.json"
   }
 }

@@ -7,10 +7,11 @@ function setup(saved = {}, fail = false) {
   const record = { sessionId: 'session', currentNumber: 24, score: 0, tasks: {}, ...saved };
   const state = { studentCode: 'TEST', studentSessionId: 'session', currentNumber: 24, studentRoundVersion: 0,
     completedTasks: {}, wrongAttempts: {}, revealedTasks: {}, studentTaskBusy: false, answers: { factors: [1,2,3,4,6,8,12,24], pairs: [], pairDraft: [], primes: [] } };
-  const els = Object.fromEntries(['factorNote','pairNote','primeNote','nextNumberBtn','practiceFeedback','factorAnswer','pairAnswer','primeAnswer'].map(k => [k, { style: {} }]));
+  const els = Object.fromEntries(['factorNote','pairNote','primeNote','nextNumberBtn','practiceFeedback','factorAnswer','pairAnswer','primeAnswer','studentScore'].map(k => [k, { style: {} }]));
   let writes = 0;
   const buttons = {};
-  const context = vm.createContext({ state, els, db: {}, document: { querySelector: (selector) => buttons[selector] ||= {} },
+  const storage = new Map();
+  const context = vm.createContext({ state, els, db: {}, localStorage: { setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k), getItem: k => storage.get(k) }, document: { querySelector: (selector) => buttons[selector] ||= {} },
     databaseError: error => error.message, studentRef: () => 'student', presenceRef: () => 'presence', serverTimestamp: () => 0, playSound: () => {},
     factorsOf: () => [1,2,3,4,6,8,12,24], sameNumberList: (a,b) => JSON.stringify(a) === JSON.stringify(b),
     factorPairs: () => [[1,24],[2,12],[3,8],[4,6]], primeFactorsOf: () => [2,2,2,3],
@@ -27,9 +28,11 @@ function setup(saved = {}, fail = false) {
       }});
     }
   });
+  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../v3/pending-score.mjs'), 'utf8').replace('export function', 'function'), context);
   vm.runInContext(source.slice(source.indexOf('function renderTaskCompletion()'), source.indexOf('async function endClassroom(')), context);
   vm.runInContext(source.slice(source.indexOf('function renderAnswers()'), source.indexOf('function renderAnswerZone(')), context);
-  return { state, record, els, buttons, writes: () => writes, check: (task = 'factors') => context.checkStudentTask(task), next: () => context.nextNumber() };
+  context.applyStudentData(record);
+  return { state, record, els, buttons, storage, restore: value => { context.restored = value; vm.runInContext("pendingScore = JSON.parse(restored); applyStudentData(studentSavedData)", context); }, flush: () => context.flushPendingScore(), queue: (task = 'factors') => context.checkStudentTask(task), writes: () => writes, check: async (task = 'factors') => { await context.checkStudentTask(task); await context.flushPendingScore(); }, next: async () => { await context.nextNumber(); context.applyStudentData(record); } };
 }
 test('rapid and repeated confirmation awards only 14 points', async () => {
   const app = setup();
@@ -47,30 +50,47 @@ test('rejoining with locally missing completion cannot award an already saved ta
   assert.equal(app.writes(), 0);
   assert.equal(app.state.completedTasks.factors, true);
 });
-test('failed save allows retry without falsely marking completion', async () => {
+test('failed upload retains local answers and retry awards points once', async () => {
   const app = setup({}, true);
-  await app.check();
-  assert.equal(app.state.completedTasks.factors, undefined);
-  assert.equal(app.state.studentTaskBusy, false);
-  await app.check();
-  assert.equal(app.record.score, 14);
-});
-test('stale answer cannot score a new round even when number repeats', async () => {
-  const app = setup({ roundVersion: 1 });
-  await app.check();
+  await app.queue();
+  assert.equal(app.state.completedTasks.factors, true);
+  await assert.rejects(app.flush(), /offline/);
   assert.equal(app.record.score, 0);
-  assert.equal(app.writes(), 0);
+  assert.equal(app.storage.size, 1);
+  await app.flush();
+  assert.equal(app.record.score, 14);
+  assert.equal(app.storage.size, 0);
 });
-test('next question is blocked while scoring and resets completion after save', async () => {
+
+test('stale pending round cannot score a different round', async () => {
   const app = setup();
-  const pending = app.check();
-  await app.next();
-  await pending;
-  assert.equal(app.record.roundVersion, undefined);
+  await app.queue();
+  app.record.roundVersion = 1;
+  await assert.rejects(app.flush(), /題目或課堂已變更/);
+  assert.equal(app.record.score, 0);
+  assert.equal(app.storage.size, 1);
+});
+
+test('next question flushes pending score before changing round', async () => {
+  const app = setup();
+  await app.queue();
+  assert.equal(app.record.score, 0);
   await app.next();
   assert.equal(app.record.roundVersion, 1);
   assert.equal(app.record.score, 14);
-  assert.equal(app.state.completedTasks.factors, undefined);
+  assert.equal(app.state.completedTasks.factors, false);
+});
+
+test('three answers combine into one student write and duplicate retries do not add points', async () => {
+  const app = setup();
+  app.state.answers.pairs = [[1,24],[2,12],[3,8],[4,6]];
+  app.state.answers.primes = [2,2,2,3];
+  await app.queue('factors'); await app.queue('pairs'); await app.queue('primes');
+  assert.equal(app.writes(), 0);
+  assert.equal(app.state.score, 46);
+  await app.flush(); await app.flush();
+  assert.equal(app.writes(), 1);
+  assert.equal(app.record.score, 46);
 });
 
 for (const task of ['factors', 'pairs', 'primes']) {
@@ -113,4 +133,16 @@ test('pass counts accumulate across questions without resetting', async () => {
  await app.check();
  assert.equal(app.record.passCounts.factors, 2);
  assert.equal(app.record.score, 28);
+});
+
+test('reloading with an unacknowledged batch does not duplicate committed score', async () => {
+  const first = setup();
+  await first.queue();
+  const pending = [...first.storage.values()][0];
+  await first.flush();
+  const reloaded = setup(JSON.parse(JSON.stringify(first.record)));
+  reloaded.restore(pending);
+  await reloaded.flush();
+  assert.equal(reloaded.record.score, 14);
+  assert.equal(reloaded.record.passCounts.factors, 1);
 });

@@ -13,7 +13,7 @@ function page(verifyTeacher) {
   const context = vm.createContext({ state, els, verifyTeacher, auth: { currentUser: { uid: "test-uid" } }, classroomSettings: { maxGlobalOnline: 100 }, SUPER_ADMIN_EMAIL: "teacher.hsieh@gmail.com", normalizeEmail: (value) => value.trim().toLowerCase() });
   vm.runInContext(source.slice(source.indexOf("function setButtonBusy("), source.indexOf('els.teacherForm.addEventListener')), context);
   vm.runInContext(source.slice(source.indexOf("function updateTeacherAccessUi()"), source.indexOf("async function verifyTeacher(")), context);
-  vm.runInContext(source.slice(source.indexOf("async function refreshTeacherAccess()"), source.indexOf("async function refreshGlobalOnlineCount()")), context);
+  vm.runInContext(source.slice(source.indexOf("async function refreshTeacherAccess()"), source.indexOf("async function ensureTeacherCanOpenClassroom()")), context);
   vm.runInContext(source.slice(source.indexOf('els.teacherIdentityForm.addEventListener("submit"'), source.indexOf('els.teacherLogoutBtn.addEventListener')), context);
   return { state, els, context, submit: () => submit({ preventDefault() {} }) };
 }
