@@ -37,6 +37,7 @@ test('rapid and repeated confirmation awards only 14 points', async () => {
   await app.check();
   assert.equal(app.record.score, 14);
   assert.equal(app.writes(), 1);
+  assert.equal(app.record.passCounts.factors, 1);
   assert.match(app.els.factorNote.textContent, /已計分/);
 });
 test('rejoining with locally missing completion cannot award an already saved task', async () => {
@@ -102,4 +103,14 @@ test('wrong attempts survive rejoining and fifth attempt reveals without scoring
   await app.check();
   assert.equal(app.record.tasks.factors, true);
   assert.equal(app.record.score, 0);
+});
+
+test('pass counts accumulate across questions without resetting', async () => {
+ const app = setup();
+ await app.check();
+ await app.next();
+ app.state.answers.factors = [1,2,3,4,6,8,12,24];
+ await app.check();
+ assert.equal(app.record.passCounts.factors, 2);
+ assert.equal(app.record.score, 28);
 });

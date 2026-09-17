@@ -153,7 +153,10 @@ service cloud.firestore {
           let newTasks = after.get('tasks', {});
           return oldTasks.get(task, false) == false && newTasks.get(task, false) == true
             && newTasks.diff(oldTasks).affectedKeys().hasOnly([task])
-            && after.score == before.score + points;
+            && after.score == before.score + points
+            && (after.get('passCounts', {}) == before.get('passCounts', {})
+              || (points > 0 && after.get('passCounts', {}).diff(before.get('passCounts', {})).affectedKeys().hasOnly([task])
+                && after.get('passCounts', {}).get(task, 0) == before.get('passCounts', {}).get(task, 0) + 1));
         }
         function validScoring() {
           let before = resource.data;
@@ -161,9 +164,11 @@ service cloud.firestore {
           let sameRound = after.get('roundVersion', 0) == before.get('roundVersion', 0)
             && after.get('currentNumber', 24) == before.get('currentNumber', 24);
           let unchanged = after.get('score', 0) == before.get('score', 0)
-            && after.get('tasks', {}) == before.get('tasks', {});
+            && after.get('tasks', {}) == before.get('tasks', {})
+            && after.get('passCounts', {}) == before.get('passCounts', {});
           let nextRound = after.get('roundVersion', 0) == before.get('roundVersion', 0) + 1
             && after.score == before.score
+            && after.get('passCounts', {}) == before.get('passCounts', {})
             && after.currentNumber is int && after.currentNumber >= 2 && after.currentNumber <= 100
             && after.tasks == {'factors': false, 'pairs': false, 'primes': false};
           return (sameRound && (unchanged || taskPoints('factors', 14)

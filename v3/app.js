@@ -62,7 +62,6 @@ const els = {
   limitStatus: document.querySelector("#limitStatus"),
   classStatus: document.querySelector("#classStatus"),
   leaderboard: document.querySelector("#leaderboard"),
-  studentRoster: document.querySelector("#studentRoster"),
   taskStatusLists: {
     factors: document.querySelector("#factorStatusList"),
     pairs: document.querySelector("#pairStatusList"),
@@ -553,27 +552,22 @@ function renderTeacherDashboard(students) {
     ? top.map((student) => `<li><strong>${escapeHtml(student.name)}</strong> ${student.score || 0} 分</li>`).join("")
     : "<li>等待學生加入</li>";
 
-  els.studentRoster.innerHTML = "";
-  Object.values(els.taskStatusLists).forEach((list) => list.innerHTML = "");
-  students
-    .sort((a, b) => (b.score || 0) - (a.score || 0))
-    .forEach((student) => {
-      const rosterRow = document.querySelector("#rosterRowTemplate").content.firstElementChild.cloneNode(true);
-      rosterRow.querySelector("[data-name]").textContent = student.name;
-      rosterRow.querySelector("[data-score]").textContent = `${student.score || 0} 分`;
-      els.studentRoster.append(rosterRow);
-
-      ["factors", "pairs", "primes"].forEach((task) => {
-        const row = document.querySelector("#taskStatusRowTemplate").content.firstElementChild.cloneNode(true);
-        const done = Boolean(student.tasks?.[task]);
-        row.querySelector("[data-name]").textContent = student.name;
-        const stateCell = row.querySelector("[data-state]");
-        stateCell.textContent = done ? "完成" : "進行中";
-        stateCell.classList.toggle("done", done);
-        stateCell.classList.toggle("working", !done);
-        els.taskStatusLists[task].append(row);
-      });
+  for (const task of ["factors", "pairs", "primes"]) {
+    const list = els.taskStatusLists[task];
+    list.replaceChildren();
+    const ranked = [...students].sort((a, b) => (b.passCounts?.[task] || 0) - (a.passCounts?.[task] || 0)
+      || String(a.name).localeCompare(String(b.name), "zh-Hant"));
+    if (!ranked.length) list.textContent = "等待學生加入";
+    ranked.forEach((student, index) => {
+      const row = document.querySelector("#taskStatusRowTemplate").content.firstElementChild.cloneNode(true);
+      row.querySelector("[data-name]").textContent = `${index + 1}. ${student.name}`;
+      const count = student.passCounts?.[task] || 0;
+      const cell = row.querySelector("[data-state]");
+      cell.textContent = `${count} 次`;
+      cell.classList.toggle("done", count > 0);
+      list.append(row);
     });
+  }
 }
 
 async function joinStudent(code, name) {
@@ -823,6 +817,7 @@ async function checkStudentTask(task) {
       tx.update(ref, {
         [`tasks.${task}`]: true,
         score: (data.score || 0) + (task === "pairs" ? 18 : 14),
+        [`passCounts.${task}`]: (data.passCounts?.[task] || 0) + 1,
         onlineAt: Date.now(), lastSeen: serverTimestamp()
       });
       return { done: true, revealed: false, awarded: true };
