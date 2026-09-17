@@ -9,7 +9,7 @@ import {
   onAuthStateChanged,
   signOut,
   signInAnonymously,
-  signInWithRedirect
+  signInWithPopup
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import {
   collection,
@@ -1026,6 +1026,8 @@ function getGoogleLoginErrorMessage(error) {
   if (["auth/configuration-not-found", "auth/operation-not-allowed"].includes(error?.code)) {
     return "Google 登入服務尚未啟用，請聯絡管理者。";
   }
+  if (error?.code === "auth/popup-blocked") return "請允許這個網站開啟彈出視窗，再按 Google 登入。";
+  if (error?.code === "auth/popup-closed-by-user") return "登入視窗已關閉，請再次點選 Google 登入完成驗證。";
   if (error?.code === "auth/unauthorized-domain") return "這個網址尚未獲准使用 Google 登入，請聯絡管理者。";
   return `Google 登入失敗：${error?.code || "unknown"} ${error?.message || ""}`;
 }
@@ -1034,8 +1036,10 @@ async function startGoogleLogin(source) {
   const provider = new GoogleAuthProvider();
   const email = source === "admin" ? SUPER_ADMIN_EMAIL : normalizeEmail(els.teacherGmail.value || "");
   provider.setCustomParameters({ prompt: "select_account", ...(email ? { login_hint: email } : {}) });
-  sessionStorage.setItem("factor-login-source", source);
-  await signInWithRedirect(auth, provider);
+  // Popup avoids cross-site redirect state being lost on GitHub Pages.
+  sessionStorage.removeItem("factor-login-source");
+  await signInWithPopup(auth, provider);
+  if (source === "admin") switchView("admin");
 }
 
 function renderPriorityTeachers() {
