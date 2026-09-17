@@ -1,4 +1,4 @@
-import { playSound } from "./sound.js?v=20260917-countdown";
+import { playSound } from "./sound.js?v=20260917-tick-tock";
 import { classroomCountdown } from "./countdown.mjs";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
@@ -322,7 +322,8 @@ function subscribeTeacher(code) {
     els.classStatus.classList.toggle("countdown-urgent", Boolean(countdown && countdown.seconds <= 10));
     if (countdown && countdown.seconds !== lastSecond && lastSecond !== undefined && lastSecond > 0
         && !document.hidden && document.body.dataset.view === "teacher") {
-      playSound(countdown.seconds === 0 ? "timeup" : countdown.seconds <= 10 ? "countdown" : "tick");
+      playSound(countdown.seconds === 0 ? "timeup" : countdown.seconds <= 10 ? "countdown"
+        : countdown.seconds % 2 ? "tick" : "tock");
     }
     lastSecond = countdown?.seconds;
   };
