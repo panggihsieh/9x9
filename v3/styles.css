@@ -699,7 +699,9 @@ body[data-view="student"] .logo span { font-size: 19px; }
 
 .practice-main {
   display: grid;
+  min-width: 0;
   gap: 12px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
 }
 
 .task-card {
@@ -770,6 +772,32 @@ body[data-view="student"] .logo span { font-size: 19px; }
 .practice-controls p {
   color: var(--muted);
   font-weight: 800;
+}
+
+.practice-controls {
+  position: sticky;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 5;
+  align-self: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #101b26;
+  box-shadow: 0 -6px 22px rgba(0, 0, 0, .35);
+}
+
+#nextNumberBtn {
+  flex: 0 0 auto;
+  min-height: 52px;
+  min-width: 112px;
+  touch-action: manipulation;
+}
+
+.practice-controls p {
+  flex: 1 1 160px;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 980px) {
