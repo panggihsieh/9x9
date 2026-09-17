@@ -85,10 +85,34 @@ service cloud.firestore {
       allow list: if false;
     }
     function roomOpen(room) { return room.status in ['waiting', 'active']; }
+    function presenceExpired(room) {
+      let path = /databases/$(database)/documents/roomPresence/$(room.get('sessionId', 'legacy'));
+      return !exists(path) || (get(path).data.get('teacherLastSeenAt', room.updatedAt) + duration.value(5, 'm') <= request.time
+        && get(path).data.get('lastStudentSeenAt', room.updatedAt) + duration.value(5, 'm') <= request.time);
+    }
     function reclaimable(room) {
       return room.status == 'released' || (room.get('teacherEmail', '') != ''
         && room.get('teacherLastSeenAt', request.time) + duration.value(5, 'm') <= request.time
-        && room.get('lastStudentSeenAt', room.updatedAt) + duration.value(5, 'm') <= request.time);
+        && room.get('lastStudentSeenAt', room.updatedAt) + duration.value(5, 'm') <= request.time
+        && presenceExpired(room));
+    }
+    match /roomPresence/{sessionId} {
+      allow read: if true;
+      function validPresence() {
+        let d = request.resource.data;
+        let room = get(/databases/$(database)/documents/classrooms/$(d.code)).data;
+        let changed = d.diff(resource == null ? {} : resource.data).affectedKeys();
+        return d.sessionId == sessionId && room.sessionId == sessionId && roomOpen(room)
+          && d.keys().hasOnly(['code', 'sessionId', 'teacherLastSeenAt', 'lastStudentSeenAt', 'studentHeartbeatId'])
+          && (resource == null || (resource.data.code == d.code && resource.data.sessionId == d.sessionId))
+          && ((ownsRoom(room) && changed.hasOnly(['code', 'sessionId', 'teacherLastSeenAt']) && d.teacherLastSeenAt == request.time)
+            || (changed.hasOnly(['code', 'sessionId', 'lastStudentSeenAt', 'studentHeartbeatId'])
+              && d.lastStudentSeenAt == request.time
+              && getAfter(/databases/$(database)/documents/classrooms/$(d.code)/students/$(d.studentHeartbeatId)).data.lastSeen == request.time
+              && getAfter(/databases/$(database)/documents/classrooms/$(d.code)/students/$(d.studentHeartbeatId)).data.sessionId == sessionId));
+      }
+      allow create, update: if validPresence();
+      allow delete: if false;
     }
     match /classrooms/{code} {
       function archived() {

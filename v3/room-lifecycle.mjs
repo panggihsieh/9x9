@@ -13,3 +13,11 @@ export function canReclaimRoom(room, now = Date.now()) {
 export function roomIsOpen(room) {
   return Boolean(room && ["waiting", "active"].includes(room.status));
 }
+
+// Keep legacy timestamps as a lower bound while older open clients coexist.
+export function withPresence(room, presence) {
+  if (!presence || presence.sessionId !== room.sessionId) return room;
+  const later = (a, b) => timestampMillis(a) >= timestampMillis(b) ? a : b;
+  return { ...room, teacherLastSeenAt: later(room.teacherLastSeenAt, presence.teacherLastSeenAt),
+    lastStudentSeenAt: later(room.lastStudentSeenAt || room.updatedAt, presence.lastStudentSeenAt) };
+}

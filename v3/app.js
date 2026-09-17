@@ -13,6 +13,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import {
   collection,
+  query,
+  where,
+  writeBatch,
   deleteDoc,
   setDoc,
   doc,
@@ -28,13 +31,13 @@ import {
 import { classroomSettings, firebaseConfig } from "./firebase-config.js";
 import { SUPER_ADMIN_EMAIL, resolveTeacherAccess } from "./teacher-access.js?v=20260916-firestore-pin";
 
-import { canReclaimRoom, roomIsOpen, timestampMillis } from "./room-lifecycle.mjs";
+import { canReclaimRoom, roomIsOpen, timestampMillis, withPresence } from "./room-lifecycle.mjs?v=presence";
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
-const ONLINE_WINDOW_MS = 45_000;
-const PRESENCE_INTERVAL_MS = 15_000;
+const ONLINE_WINDOW_MS = 150_000;
+const PRESENCE_INTERVAL_MS = 60_000;
 
 const els = {
   tabs: document.querySelectorAll(".tab[data-view]"),
@@ -256,6 +259,45 @@ function chooseNumber() {
   return chooseClassroomNumber(state.studentDifficulty, state.score, state.currentNumber);
 }
 
+const presenceRef = (sessionId) => doc(db, "roomPresence", sessionId);
+const activeRoomsQuery = () => query(collection(db, "classrooms"), where("status", "in", ["waiting", "active"]));
+const currentStudentsQuery = (code, sessionId) => query(studentsRef(code), where("sessionId", "==", sessionId || ""));
+let quotaBackoffUntil = 0;
+let lastStudentActivityAt = 0;
+function databaseError(error) {
+  if (error?.code === "resource-exhausted" || /quota exceeded/i.test(error?.message || "")) {
+    quotaBackoffUntil = Date.now() + 5 * 60_000;
+    const notice = document.querySelector('#classroomModeHint');
+    if (notice) notice.textContent = "資料庫配額已用盡，暫時無法開啟教室；請等待配額恢復後重試。";
+    return "資料庫配額已用盡，暫時無法讀寫。背景查詢已暫停 5 分鐘，請等待配額恢復。";
+  }
+  return error?.message || "連線失敗，請稍後再試。";
+}
+function subscriptionError(error) {
+  const message = databaseError(error);
+  els.teacherAccessNote.textContent = message;
+  els.practiceFeedback.textContent = message;
+  els.adminStatus.textContent = message;
+}
+function canUseDatabase() { return !document.hidden && Date.now() >= quotaBackoffUntil; }
+async function activityRoom(room, reader = getDoc) {
+  if (!room?.sessionId) return room;
+  const presence = await reader(presenceRef(room.sessionId));
+  return withPresence(room, presence.data());
+}
+async function writeStudentPresence() {
+  if (!state.studentCode || !state.studentSessionId || !canUseDatabase() || Date.now() - lastStudentActivityAt < 50_000) return;
+  const memberRef = studentRef(state.studentCode);
+  const batch = writeBatch(db);
+  batch.update(memberRef, { onlineAt: Date.now(), lastSeen: serverTimestamp() });
+  batch.set(presenceRef(state.studentSessionId), {
+    code: state.studentCode, sessionId: state.studentSessionId,
+    lastStudentSeenAt: serverTimestamp(), studentHeartbeatId: memberRef.id
+  }, { merge: true });
+  await batch.commit();
+  lastStudentActivityAt = Date.now();
+}
+
 async function openClassroom(code) {
   const difficulty = document.querySelector('#classroomDifficulty').value;
   const sessionId = await runTransaction(db, async (tx) => {
@@ -266,7 +308,8 @@ async function openClassroom(code) {
       tx.update(ref, { teacherUid: auth.currentUser.uid, teacherLastSeenAt: serverTimestamp(), updatedAt: serverTimestamp() });
       return room.sessionId;
     }
-    if (room && !canReclaimRoom(room)) {
+    const liveRoom = room ? await activityRoom(room, ref => tx.get(ref)) : null;
+    if (room && !canReclaimRoom(liveRoom)) {
       throw new Error(!room.teacherEmail
         ? "這是舊版保留的班級代碼，請 admin 在後台釋放。"
         : "此班級仍有老師或學生近期活動；雙方離線滿 5 分鐘後可重新使用，或請 admin 釋放。");
@@ -281,6 +324,8 @@ async function openClassroom(code) {
     return nextSessionId;
   });
   state.teacherSessionId = sessionId;
+  globalCountAt = 0;
+  try { localStorage.removeItem("factor-v3-online-cache"); } catch {}
 }
 
 async function updateCurrentRoom(code, sessionId, changes) {
@@ -296,12 +341,14 @@ async function updateCurrentRoom(code, sessionId, changes) {
 function startTeacherHeartbeat(code) {
   clearInterval(state.teacherHeartbeatTimer);
   const sessionId = state.teacherSessionId;
-  const heartbeat = () => updateCurrentRoom(code, sessionId, {
-    teacherLastSeenAt: serverTimestamp(), updatedAt: serverTimestamp()
-  }).catch(() => {
-    clearInterval(state.teacherHeartbeatTimer);
-    els.teacherAccessNote.textContent = "老師連線回報失敗，請重新驗證並開啟原班級。";
-  });
+  const heartbeat = async () => {
+    if (!canUseDatabase()) return;
+    try {
+      await setDoc(presenceRef(sessionId), { code, sessionId, teacherLastSeenAt: serverTimestamp() }, { merge: true });
+    } catch (error) {
+      els.teacherAccessNote.textContent = databaseError(error);
+    }
+  };
   heartbeat();
   state.teacherHeartbeatTimer = setInterval(heartbeat, PRESENCE_INTERVAL_MS);
 }
@@ -350,15 +397,15 @@ function subscribeTeacher(code) {
     document.querySelector('#durationOptions').disabled = room.status === "active";
     els.startClassBtn.disabled = room.status === "active";
     els.maxStudents.textContent = state.teacherMaxStudents;
-  });
+  }, subscriptionError);
 
-  state.unsubTeacherStudents = onSnapshot(studentsRef(code), (snapshot) => {
+  state.unsubTeacherStudents = onSnapshot(currentStudentsQuery(code, state.teacherSessionId), (snapshot) => {
     const students = snapshot.docs
       .map((item) => ({ id: item.id, ...item.data() }))
       .filter((student) => !state.teacherSessionId || student.sessionId === state.teacherSessionId);
     state.teacherStudents = students;
     renderTeacherDashboard(students);
-  });
+  }, subscriptionError);
 
   state.teacherRefreshTimer = setInterval(() => {
     renderTeacherDashboard(state.teacherStudents);
@@ -381,7 +428,8 @@ function stopTeacherSubscription() {
 }
 
 function isStudentOnline(student) {
-  return typeof student.onlineAt === "number" && Date.now() - student.onlineAt <= ONLINE_WINDOW_MS;
+  const seen = timestampMillis(student.lastSeen) || student.onlineAt || 0;
+  return seen > 0 && Date.now() - seen <= ONLINE_WINDOW_MS;
 }
 
 function updateTeacherAccessUi() {
@@ -480,28 +528,45 @@ async function refreshTeacherAccess() {
   updateTeacherAccessUi();
 }
 
+let globalCountPromise;
+let globalCountAt = 0;
 async function refreshGlobalOnlineCount() {
-  const rooms = await getDocs(collection(db, "classrooms"));
-  await Promise.all(rooms.docs.filter((item) => roomIsOpen(item.data()) && canReclaimRoom(item.data())).map(async (item) => {
-    try {
-      await runTransaction(db, async (tx) => {
-        const latest = (await tx.get(item.ref)).data();
-        if (!roomIsOpen(latest) || !canReclaimRoom(latest)) return;
-        tx.update(item.ref, { status: "released", releasedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      });
-    } catch (error) {
-      // Server rules take precedence over the browser clock and concurrent activity.
-      if (error.code !== "permission-denied") console.warn("閒置教室檢查暫時失敗", error.code);
+  if (Date.now() < quotaBackoffUntil) throw new Error("資料庫配額已用盡，背景查詢暫停中。");
+  try {
+    const cached = JSON.parse(localStorage.getItem("factor-v3-online-cache") || "null");
+    if (cached && Number.isFinite(cached.count) && cached.count >= 0
+        && cached.at <= Date.now() && Date.now() - cached.at < 60_000 && cached.at > globalCountAt) {
+      state.globalOnlineCount = cached.count; globalCountAt = cached.at;
+      updateTeacherAccessUi();
     }
-  }));
-  const counts = await Promise.all(rooms.docs.map(async (room) => {
-    const members = await getDocs(studentsRef(room.id));
-    return members.docs.filter((member) => member.data().sessionId === room.data().sessionId
-      && isStudentOnline(member.data())).length;
-  }));
-  state.globalOnlineCount = counts.reduce((total, count) => total + count, 0);
-  updateTeacherAccessUi();
-  return state.globalOnlineCount;
+  } catch {}
+  if (globalCountAt && Date.now() - globalCountAt < 60_000) return state.globalOnlineCount;
+  if (globalCountPromise) return globalCountPromise;
+  globalCountPromise = (async () => {
+    const rooms = await getDocs(activeRoomsQuery());
+    let count = 0;
+    for (const item of rooms.docs) {
+      const room = item.data();
+      const liveRoom = await activityRoom(room);
+      if (canReclaimRoom(liveRoom)) {
+        await runTransaction(db, async tx => {
+          const current = (await tx.get(item.ref)).data();
+          if (!current || !roomIsOpen(current)) return;
+          const latest = await activityRoom(current, ref => tx.get(ref));
+          if (canReclaimRoom(latest)) tx.update(item.ref, { status: "released", releasedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        });
+        continue;
+      }
+      const members = await getDocs(currentStudentsQuery(item.id, room.sessionId));
+      count += members.docs.filter(member => isStudentOnline(member.data())).length;
+    }
+    state.globalOnlineCount = count;
+    globalCountAt = Date.now();
+    try { localStorage.setItem("factor-v3-online-cache", JSON.stringify({ count, at: globalCountAt })); } catch {}
+    updateTeacherAccessUi();
+    return count;
+  })().catch(error => { throw new Error(databaseError(error)); }).finally(() => { globalCountPromise = null; });
+  return globalCountPromise;
 }
 
 async function ensureTeacherCanOpenClassroom() {
@@ -619,6 +684,8 @@ async function joinStudent(code, name) {
   state.studentRoundVersion = 0;
   renderAnswers();
   state.studentSessionId = joinedSessionId;
+  globalCountAt = 0;
+  try { localStorage.removeItem("factor-v3-online-cache"); } catch {}
   startPresence();
   subscribeStudent(code);
 }
@@ -651,7 +718,7 @@ function subscribeStudent(code) {
       els.studentLobby.classList.remove("hidden");
       els.practiceView.classList.add("hidden");
     }
-  });
+  }, subscriptionError);
 
   state.unsubStudentDoc = onSnapshot(studentRef(code), (snapshot) => {
     const data = snapshot.data();
@@ -659,6 +726,7 @@ function subscribeStudent(code) {
     if (state.currentNumber !== data.currentNumber || state.studentRoundVersion !== (data.roundVersion || 0)) {
       state.answers = { factors: [], pairs: [], pairDraft: [], primes: [] };
     }
+    lastStudentActivityAt = timestampMillis(data.lastSeen);
     state.completedTasks = data.tasks || {};
     state.wrongAttempts = data.wrongAttempts || {};
     state.revealedTasks = data.revealedTasks || {};
@@ -668,24 +736,14 @@ function subscribeStudent(code) {
     els.studentScore.textContent = state.score;
     renderAnswers();
     updateTargetFocus();
-  });
+  }, subscriptionError);
 }
 
 function startPresence() {
   stopPresence();
-  const updatePresence = () => {
-    if (!state.studentCode || !state.studentSessionId) return;
-    const code = state.studentCode;
-    const sessionId = state.studentSessionId;
-    const memberRef = studentRef(code, state.studentId, sessionId);
-    runTransaction(db, async (tx) => {
-      const ref = classroomRef(code);
-      const room = (await tx.get(ref)).data();
-      if (!roomIsOpen(room) || room.sessionId !== sessionId) return;
-      tx.update(memberRef, { onlineAt: Date.now(), lastSeen: serverTimestamp() });
-      tx.update(ref, { lastStudentSeenAt: serverTimestamp(), studentHeartbeatId: memberRef.id });
-    }).catch(() => {});
-  };
+  const updatePresence = () => writeStudentPresence().catch(error => {
+    els.practiceFeedback.textContent = databaseError(error);
+  });
   updatePresence();
   state.presenceTimer = setInterval(updatePresence, PRESENCE_INTERVAL_MS);
 }
@@ -698,6 +756,10 @@ function stopPresence() {
 
 function showStudentEnded() {
   stopPresence();
+  state.unsubStudentRoom?.();
+  state.unsubStudentDoc?.();
+  state.studentCode = "";
+  state.studentSessionId = "";
   els.practiceView.classList.add("hidden");
   els.studentLobby.classList.remove("hidden");
   els.lobbyTitle.textContent = "班級已結束";
@@ -807,6 +869,8 @@ async function checkStudentTask(task) {
       if (!correct) {
         const attempts = Math.min(5, (data.wrongAttempts?.[task] || 0) + 1);
         const revealed = attempts >= 5;
+        tx.set(presenceRef(sessionId), { code: state.studentCode, sessionId,
+          lastStudentSeenAt: serverTimestamp(), studentHeartbeatId: ref.id }, { merge: true });
         tx.update(ref, {
           [`wrongAttempts.${task}`]: attempts,
           ...(revealed ? { [`tasks.${task}`]: true, [`revealedTasks.${task}`]: true } : {}),
@@ -814,6 +878,8 @@ async function checkStudentTask(task) {
         });
         return { done: revealed, revealed, attempts, awarded: false };
       }
+      tx.set(presenceRef(sessionId), { code: state.studentCode, sessionId,
+        lastStudentSeenAt: serverTimestamp(), studentHeartbeatId: ref.id }, { merge: true });
       tx.update(ref, {
         [`tasks.${task}`]: true,
         score: (data.score || 0) + (task === "pairs" ? 18 : 14),
@@ -833,7 +899,7 @@ async function checkStudentTask(task) {
       : result.revealed ? "答錯 5 次，已顯示正確答案，本小題不計分。"
       : result.done ? "這一小題已完成，不會重複加分。" : `還不正確，已答錯 ${result.attempts} / 5 次。`;
   } catch (error) {
-    els.practiceFeedback.textContent = `計分未完成：${error.message}`;
+    els.practiceFeedback.textContent = `計分未完成：${databaseError(error)}`;
   } finally {
     state.studentTaskBusy = false;
     renderTaskCompletion();
@@ -865,6 +931,8 @@ async function nextNumber() {
       if (!data || data.sessionId !== sessionId || (data.roundVersion || 0) !== roundVersion) {
         throw new Error("題目已更新，請稍後再試。");
       }
+      tx.set(presenceRef(sessionId), { code: state.studentCode, sessionId,
+        lastStudentSeenAt: serverTimestamp(), studentHeartbeatId: ref.id }, { merge: true });
       tx.update(ref, {
         currentNumber: number, roundVersion: roundVersion + 1,
         tasks: { factors: false, pairs: false, primes: false },
@@ -944,10 +1012,10 @@ async function loadAdminClassrooms() {
   if (!state.adminAccess) return;
   els.refreshClassroomsBtn.disabled = true;
   try {
-    const rooms = await getDocs(collection(db, "classrooms"));
+    const rooms = await getDocs(activeRoomsQuery());
     const entries = await Promise.all(rooms.docs.filter((item) => item.data().status !== "released").map(async (item) => {
-      const room = item.data();
-      const members = await getDocs(studentsRef(item.id));
+      const room = await activityRoom(item.data());
+      const members = await getDocs(currentStudentsQuery(item.id, room.sessionId));
       const online = members.docs.filter((member) => member.data().sessionId === room.sessionId && isStudentOnline(member.data())).length;
       return { code: item.id, room, online };
     }));
@@ -1109,7 +1177,7 @@ function handleAdminAuth(user) {
   showAdminAccess(user, access);
   els.adminLoginBtn.classList.toggle("hidden", state.adminAccess);
   els.teacherLogoutBtn.classList.toggle("hidden", !state.adminAccess);
-  if (!state.adminAccess) return;
+  if (!state.adminAccess || !canUseDatabase()) return;
   loadAdminClassrooms();
   state.unsubTeacherGrants = onSnapshot(collection(db, "admins"), (snapshot) => {
     if (revision !== state.authRevision) return;
@@ -1155,7 +1223,7 @@ els.teacherForm.addEventListener("submit", async (event) => {
     subscribeTeacher(code);
     startTeacherHeartbeat(code);
   } catch (error) {
-    els.teacherAccessNote.textContent = error.message;
+    els.teacherAccessNote.textContent = databaseError(error);
   } finally {
     setButtonBusy(els.openClassBtn, false, "開啟教室");
     els.openClassBtn.disabled = Boolean(els.openClassBtn.dataset.busy);
@@ -1174,7 +1242,7 @@ els.startClassBtn.addEventListener("click", async () => {
   } catch (error) {
     els.startClassBtn.disabled = false;
     document.querySelector('#durationOptions').disabled = false;
-    els.teacherAccessNote.textContent = error.message;
+    els.teacherAccessNote.textContent = databaseError(error);
   }
 });
 
@@ -1187,7 +1255,7 @@ els.endClassBtn.addEventListener("click", async () => {
     renderTeacherDashboard([]);
     state.teacherCode = "";
     state.teacherSessionId = "";
-  } catch (error) { els.teacherAccessNote.textContent = error.message; }
+  } catch (error) { els.teacherAccessNote.textContent = databaseError(error); }
 });
 
 els.studentForm.addEventListener("submit", async (event) => {
@@ -1204,7 +1272,7 @@ els.studentForm.addEventListener("submit", async (event) => {
     els.studentLobby.classList.remove("hidden");
     els.studentLobby.scrollIntoView({ block: "nearest", behavior: "smooth" });
   } catch (error) {
-    els.studentJoinError.textContent = error.message;
+    els.studentJoinError.textContent = databaseError(error);
     els.studentJoinError.hidden = false;
   } finally {
     setButtonBusy(els.studentJoinBtn, false, "加入班級");
@@ -1303,15 +1371,30 @@ getRedirectResult(auth).catch((error) => {
 
 onAuthStateChanged(auth, handleAdminAuth);
 updateTeacherAccessUi();
-refreshGlobalOnlineCount().catch(() => { els.teacherGlobalOnline.textContent = "暫時無法取得"; });
+if (document.body.dataset.view !== "student" && canUseDatabase()) refreshGlobalOnlineCount().catch(error => { els.teacherGlobalOnline.textContent = "暫時無法取得"; els.teacherAccessNote.textContent = error.message; });
 
 setInterval(async () => {
-  if (document.hidden || document.body.dataset.view === "student") return;
+  if (!canUseDatabase() || document.body.dataset.view === "student") return;
   try {
     await refreshGlobalOnlineCount();
     if (document.body.dataset.view === "admin" && state.adminAccess) await loadAdminClassrooms();
   } catch { /* Retry on the next visible-page check. */ }
-}, 30_000);
+}, 60_000);
 
 renderNumberBoard();
 renderAnswers();
+
+// Background tabs pause subscriptions and leases. Returning resumes with a fresh snapshot.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    stopTeacherSubscription();
+    stopPresence();
+    state.unsubStudentRoom?.(); state.unsubStudentDoc?.();
+    state.unsubTeacherGrants?.();
+    return;
+  }
+  if (!canUseDatabase()) return;
+  if (state.teacherCode) { subscribeTeacher(state.teacherCode); startTeacherHeartbeat(state.teacherCode); }
+  if (state.studentCode) { subscribeStudent(state.studentCode); startPresence(); }
+  if (state.adminAccess && document.body.dataset.view === "admin") handleAdminAuth(auth.currentUser);
+});

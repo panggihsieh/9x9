@@ -2,12 +2,16 @@
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
-if (process.env.RUN_FIRESTORE_LIVE !== 'x9-factor-game') throw new Error('Set RUN_FIRESTORE_LIVE=x9-factor-game to run.');
+const emulator = process.env.FIRESTORE_EMULATOR_HOST;
+if (emulator && !/^(127\.0\.0\.1|localhost):\d+$/.test(emulator)) throw new Error('Only local emulator allowed');
+if (!emulator && process.env.RUN_FIRESTORE_LIVE !== 'x9-factor-game') throw new Error('Set RUN_FIRESTORE_LIVE=x9-factor-game to run.');
 const root = process.env.LOCALAPPDATA + '/npm-cache/_npx/7750544ccf494d8b/node_modules/firebase-tools/lib/';
-const cliAuth = require(root + 'auth');
+const cliAuth = emulator ? null : require(root + 'auth');
 const apiKey = fs.readFileSync('v3/firebase-config.js', 'utf8').match(/apiKey: "([^"]+)"/)[1];
-const base = 'https://firestore.googleapis.com/v1/projects/x9-factor-game/databases/(default)/documents';
-const prefix = 'projects/x9-factor-game/databases/(default)/documents/';
+const project = emulator ? 'demo-factor-game' : 'x9-factor-game';
+const endpoint = emulator ? 'http://' + emulator : 'https://firestore.googleapis.com';
+const base = endpoint + '/v1/projects/' + project + '/databases/(default)/documents';
+const prefix = 'projects/' + project + '/databases/(default)/documents/';
 const email = 'codex-pin-test-' + randomUUID() + '@example.invalid';
 const code = 'T' + randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
 let adminToken, idToken, uid, checks = 0;
@@ -28,10 +32,13 @@ function expect(result, status, label) {
   checks++; console.log('PASS ' + label);
 }
 (async () => {
-  const account = cliAuth.getGlobalDefaultAccount();
-  adminToken = (await cliAuth.getAccessToken(account.tokens.refresh_token, ['https://www.googleapis.com/auth/cloud-platform'])).access_token;
+  if (emulator) adminToken = 'owner';
+  else {
+    const account = cliAuth.getGlobalDefaultAccount();
+    adminToken = (await cliAuth.getAccessToken(account.tokens.refresh_token, ['https://www.googleapis.com/auth/cloud-platform'])).access_token;
+  }
   try {
-    const signup = await request('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + apiKey, 'POST', { returnSecureToken: true });
+    const signup = await request((emulator ? 'http://127.0.0.1:19099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=' : 'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=') + apiKey, 'POST', { returnSecureToken: true });
     expect(signup, 200, 'anonymous verification identity');
     idToken = signup.data.idToken; uid = signup.data.localId;
     expect(await write('admins/' + email, { email, role: 'auth', passcode: '0037', updatedBy: 'live-test' }, ['updatedAt'], adminToken), 200, 'isolated teacher fixture');
@@ -135,18 +142,41 @@ function expect(result, status, label) {
     expect(await write('classrooms/' + code + 'G', guestRoom, ['createdAt', 'updatedAt', 'teacherLastSeenAt', 'lastStudentSeenAt']), 200, 'guest creates classroom with code only');
     expect(await write('classrooms/' + code + 'G', { status: 'active' }, ['updatedAt'], idToken, true), 200, 'guest starts own classroom');
     expect(await write('classrooms/' + code + 'G', { teacherHasPriority: true }, ['updatedAt'], idToken, true), 403, 'guest cannot elevate priority');
+    if (emulator) {
+      const presencePath = 'roomPresence/' + guestRoom.sessionId;
+      expect(await write(presencePath, { code: code + 'G', sessionId: guestRoom.sessionId }, ['teacherLastSeenAt'], idToken), 200, 'teacher writes independent presence');
+      expect(await write(presencePath, { code: code + 'G', sessionId: guestRoom.sessionId, teacherLastSeenAt: oldTime }, [], idToken, true), 403, 'cannot backdate teacher presence');
+      await write('classrooms/' + code + 'G', { teacherLastSeenAt: oldTime, lastStudentSeenAt: oldTime, updatedAt: oldTime }, [], adminToken, true);
+      expect(await write('classrooms/' + code + 'G', {status:'released'}, ['releasedAt','updatedAt'], null, true), 403, 'fresh separate teacher presence prevents idle release');
+      const memberPath = 'classrooms/' + code + 'G/students/presence-test';
+      await write(memberPath, {sessionId:guestRoom.sessionId, score:0, tasks:{factors:false,pairs:false,primes:false}}, ['lastSeen'], adminToken);
+      const before = await request(base + '/classrooms/' + code + 'G', 'GET', null, adminToken);
+      expect(await request(base + ':commit', 'POST', {writes:[
+        {update:{name:prefix+memberPath,fields:fields({onlineAt:Date.now()})}, updateMask:{fieldPaths:['onlineAt','lastSeen']}, updateTransforms:[{fieldPath:'lastSeen',setToServerValue:'REQUEST_TIME'}]},
+        {update:{name:prefix+presencePath,fields:fields({code:code+'G',sessionId:guestRoom.sessionId,studentHeartbeatId:'presence-test'})}, updateMask:{fieldPaths:['code','sessionId','studentHeartbeatId','lastStudentSeenAt']}, updateTransforms:[{fieldPath:'lastStudentSeenAt',setToServerValue:'REQUEST_TIME'}]}
+      ]}), 200, 'anonymous student heartbeat updates only member and presence');
+      const after = await request(base + '/classrooms/' + code + 'G', 'GET', null, adminToken);
+      assert.deepEqual(after.data.fields,before.data.fields); checks++; console.log('PASS student heartbeat never changes shared classroom document');
+      await write(presencePath, {teacherLastSeenAt:oldTime}, [], adminToken, true);
+      expect(await write('classrooms/' + code + 'G', {status:'released'}, ['releasedAt','updatedAt'], null, true), 403, 'fresh separate student presence prevents release');
+      await write(presencePath, {lastStudentSeenAt:oldTime}, [], adminToken, true);
+      expect(await write('classrooms/' + code + 'G', {status:'released'}, ['releasedAt','updatedAt'], null, true), 200, 'both separate leases expired permits release');
+      expect(await write(presencePath, {code:code+'G',sessionId:guestRoom.sessionId}, ['teacherLastSeenAt'], idToken, true), 403, 'released room rejects late heartbeat');
+      await request(base+'/'+presencePath,'DELETE',null,adminToken);
+      await request(base+'/'+memberPath,'DELETE',null,adminToken);
+    }
     console.log('Completed ' + checks + ' live checks.');
   } finally {
     for (const collection of ['students', 'sessions']) {
       const docs = await request(base + '/classrooms/' + code + '/' + collection, 'GET', null, adminToken);
-      for (const doc of docs.data.documents || []) await request('https://firestore.googleapis.com/v1/' + doc.name, 'DELETE', null, adminToken);
+      for (const doc of docs.data.documents || []) await request(endpoint + '/v1/' + doc.name, 'DELETE', null, adminToken);
     }
     for (const path of ['admins/' + email, 'teacherAttempts/' + email, ...(uid ? ['teacherSessions/' + uid] : []), 'classrooms/' + code, 'classrooms/' + code + 'G']) {
       const result = await request(base + '/' + path, 'DELETE', null, adminToken);
       if (![200, 404].includes(result.status)) throw new Error('Test cleanup failed: ' + path);
     }
     if (idToken) {
-      const result = await request('https://identitytoolkit.googleapis.com/v1/accounts:delete?key=' + apiKey, 'POST', { idToken });
+      const result = await request((emulator ? 'http://127.0.0.1:19099/identitytoolkit.googleapis.com/v1/accounts:delete?key=' : 'https://identitytoolkit.googleapis.com/v1/accounts:delete?key=') + apiKey, 'POST', { idToken });
       if (result.status !== 200) throw new Error('Test identity cleanup failed');
     }
     console.log('Isolated test data cleaned up.');

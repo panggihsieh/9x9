@@ -14,6 +14,7 @@
     "public": ".",
     "ignore": [
       "firebase.json",
+      "firebase.emulators.json",
       "**/.*",
       "**/.*/**",
       ".git/**",
