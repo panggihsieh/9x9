@@ -777,6 +777,19 @@ body[data-view="student"] .logo span { font-size: 19px; }
 #classStatus { font-variant-numeric: tabular-nums; }
 #classStatus.countdown-urgent { color: var(--danger); }
 
+#classroomDifficulty {
+  min-height: 46px;
+  max-width: 100%;
+  padding: 0 12px;
+  border: 1px solid #375674;
+  border-radius: 10px;
+  color: var(--text);
+  background: #09131e;
+  font: inherit;
+}
+
+#studentDifficultyLabel { margin: 0; color: var(--yellow); font-weight: 800; }
+
 .practice-controls {
   position: sticky;
   bottom: calc(12px + env(safe-area-inset-bottom, 0px));

@@ -1,6 +1,6 @@
 import { playSound } from "./sound.js?v=20260917-tick-tock";
 import { classroomCountdown } from "./countdown.mjs";
-import { chooseProgressiveNumber } from "./question-difficulty.mjs";
+import { chooseClassroomNumber } from "./question-difficulty.mjs?v=20260917-modes";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
   GoogleAuthProvider,
@@ -113,6 +113,7 @@ const state = {
   studentCode: "",
   studentId: localStorage.getItem("factor-v3-student-id") || crypto.randomUUID(),
   studentName: "",
+  studentDifficulty: "",
   selectedTask: "factors",
   currentNumber: 24,
   answers: {
@@ -253,10 +254,11 @@ function samePairs(a, b) {
 }
 
 function chooseNumber() {
-  return chooseProgressiveNumber(state.score, state.currentNumber);
+  return chooseClassroomNumber(state.studentDifficulty, state.score, state.currentNumber);
 }
 
 async function openClassroom(code) {
+  const difficulty = document.querySelector('#classroomDifficulty').value;
   const sessionId = await runTransaction(db, async (tx) => {
     const ref = classroomRef(code);
     const snapshot = await tx.get(ref);
@@ -274,7 +276,7 @@ async function openClassroom(code) {
     const nextSessionId = crypto.randomUUID();
     tx.set(ref, { code, sessionId: nextSessionId, teacherUid: auth.currentUser.uid,
       teacherEmail: state.teacherEmail, teacherRole: state.teacherRole, teacherHasPriority: state.teacherHasPriority,
-      status: "waiting", maxStudents: classroomSettings.maxStudents, studentCount: 0,
+      status: "waiting", difficulty, maxStudents: classroomSettings.maxStudents, studentCount: 0,
       teacherLastSeenAt: serverTimestamp(), lastStudentSeenAt: serverTimestamp(),
       createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     return nextSessionId;
@@ -339,6 +341,9 @@ function subscribeTeacher(code) {
       return;
     }
     state.teacherMaxStudents = room?.maxStudents || classroomSettings.maxStudents;
+    const modeSelector = document.querySelector('#classroomDifficulty');
+    modeSelector.disabled = true;
+    if (room.difficulty) modeSelector.value = room.difficulty;
     countdownRoom = room;
     updateCountdown();
     const duration = [2, 3, 5, 10].includes(room.durationMinutes) ? room.durationMinutes : 3;
@@ -363,6 +368,7 @@ function subscribeTeacher(code) {
 }
 
 function stopTeacherSubscription() {
+  document.querySelector('#classroomDifficulty').disabled = false;
   clearInterval(state.teacherCountdownTimer);
   state.teacherCountdownTimer = null;
   clearInterval(state.teacherHeartbeatTimer);
@@ -599,7 +605,8 @@ async function joinStudent(code, name) {
       sessionId,
       score: alreadyInSession ? existingStudent.score || 0 : 0,
       status: "joined",
-      currentNumber: alreadyInSession ? existingStudent.currentNumber || state.currentNumber : state.currentNumber,
+      currentNumber: alreadyInSession ? existingStudent.currentNumber || state.currentNumber
+        : { beginner: 12, intermediate: 36, advanced: 72 }[room.difficulty] || 24,
       tasks: alreadyInSession ? existingStudent.tasks || { factors: false, pairs: false, primes: false } : { factors: false, pairs: false, primes: false },
       joinedAt: alreadyInSession ? existingStudent.joinedAt : serverTimestamp(),
       onlineAt: Date.now(),
@@ -639,6 +646,8 @@ function subscribeStudent(code) {
       return;
     }
     state.studentSessionId = room.sessionId || state.studentSessionId;
+    state.studentDifficulty = room.difficulty || "";
+    document.querySelector('#studentDifficultyLabel').textContent = `教室模式：${{ beginner: "初級", intermediate: "中級", advanced: "高級" }[state.studentDifficulty] || "漸進練習"}`;
     if (room.status === "active") {
       if (!wasActive) playSound("start");
       wasActive = true;

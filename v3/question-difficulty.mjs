@@ -13,3 +13,12 @@ export function chooseProgressiveNumber(score, currentNumber, random = Math.rand
   const values = pools[selectedLevel].filter((number) => number !== currentNumber);
   return values[Math.floor(random() * values.length)];
 }
+
+export function chooseClassroomNumber(mode, score, currentNumber, random = Math.random) {
+  const levels = { beginner: 0, intermediate: 1, advanced: 2 };
+  if (!(mode in levels)) return chooseProgressiveNumber(score, currentNumber, random);
+  const base = levels[mode];
+  const level = mode === 'advanced' && score >= 138 && random() >= 0.2 ? 3 : base;
+  const values = pools[level].filter(number => number !== currentNumber);
+  return values[Math.floor(random() * values.length)];
+}

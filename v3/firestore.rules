@@ -98,6 +98,7 @@ service cloud.firestore {
       function freshRoom() {
         let d = request.resource.data;
         return teacherFields(d) && d.status == 'waiting' && d.studentCount == 0
+          && d.get('difficulty', 'beginner') in ['beginner', 'intermediate', 'advanced']
           && d.code == code && d.sessionId is string && d.sessionId.size() > 0
           && d.teacherLastSeenAt == request.time && d.lastStudentSeenAt == request.time
           && d.createdAt == request.time && d.updatedAt == request.time;

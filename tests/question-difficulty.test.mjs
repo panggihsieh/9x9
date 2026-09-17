@@ -1,6 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseProgressiveNumber } from '../v3/question-difficulty.mjs';
+import { chooseProgressiveNumber, chooseClassroomNumber } from '../v3/question-difficulty.mjs';
+
+test('teacher modes keep beginner and intermediate ranges regardless of score', () => {
+  for (const score of [0, 138, 10000]) {
+    assert.equal(chooseClassroomNumber('beginner', score, 12, () => 0.99), 27);
+    assert.equal(chooseClassroomNumber('intermediate', score, 36, () => 0.99), 50);
+  }
+  assert.equal(chooseClassroomNumber('advanced', 0, 72, () => 0.99), 81);
+  assert.equal(chooseClassroomNumber('advanced', 138, 72, () => 0.99), 100);
+  assert.equal(chooseClassroomNumber('', 414, 24, () => 0.99), 100);
+});
 
 test('scores progress from small composites to richer factorization problems', () => {
   assert.equal(chooseProgressiveNumber(0, 24, () => 0.99), 27);
