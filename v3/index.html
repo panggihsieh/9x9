@@ -45,10 +45,10 @@
             </select>
           </label>
           <label class="classroom-code-control">
-            <span class="step-label">班級代碼 <span class="step-number" aria-hidden="true">4</span></span>
+            <span class="step-label">班級代碼</span>
             <input id="teacherCode" value="5188" maxlength="12" placeholder="例如 MATH24" required>
           </label>
-          <button type="submit" id="openClassBtn" class="numbered-action" data-step="5" aria-label="步驟 5：開啟教室" disabled>開啟教室</button>
+          <button type="submit" id="openClassBtn" aria-label="開啟教室" disabled>開啟教室</button>
           <small id="classroomModeHint" role="status">請先選擇模式，再開啟教室。</small>
         </form>
       </nav>
@@ -56,24 +56,7 @@
 
     <main>
       <section class="view active" id="teacherView">
-        <section class="panel hero-panel teacher-hero">
-          <h2>老師端</h2>
-          <div class="teacher-stat">
-            <span>身分／優先等級</span>
-            <strong id="teacherAuthStatus" class="role-badge" aria-live="polite">尚未驗證</strong>
-          </div>
-          <form id="teacherIdentityForm" class="teacher-identity">
-            <label><span class="step-label">gmail <span class="step-number" aria-hidden="true">1</span></span>
-              <input id="teacherGmail" type="email" value="guest@gmail.com" autocomplete="email" placeholder="請輸入個人帳號驗證優先權" aria-label="gmail" required>
-            </label>
-            <label class="passcode-field"><span class="step-label">passcode <span class="step-number" aria-hidden="true">2</span></span>
-              <input id="teacherPasscode" type="text" value="1234" autocomplete="current-password" placeholder="請輸入通行碼" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required>
-            </label>
-            <button type="submit" id="teacherLoginBtn" class="numbered-action" data-step="3" aria-label="步驟 3：驗證優先權">驗證優先權</button>
-          </form>
-
-          <p id="teacherAccessNote" class="teacher-access-note" role="status">只輸入班級代碼即可用 guest 開課；驗證 Gmail 與通行碼可取得優先權。</p>
-        </section>
+        <p id="teacherAccessNote" role="status" aria-live="polite"></p>
 
         <section class="panel classroom-panel hidden" id="teacherRoom">
           <div class="room-head">
@@ -261,6 +244,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?v=20260917-quota-warning"></script>
+  <script type="module" src="./app.js?personal=1&v=20260917-quota-warning"></script>
 </body>
 </html>

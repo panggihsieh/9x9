@@ -51,14 +51,9 @@ const els = {
   },
   teacherForm: document.querySelector("#teacherForm"),
   teacherCode: document.querySelector("#teacherCode"),
-  teacherLoginBtn: document.querySelector("#teacherLoginBtn"),
-  teacherIdentityForm: document.querySelector("#teacherIdentityForm"),
-  teacherGmail: document.querySelector("#teacherGmail"),
-  teacherPasscode: document.querySelector("#teacherPasscode"),
   teacherAccessNote: document.querySelector("#teacherAccessNote"),
   openClassBtn: document.querySelector("#openClassBtn"),
   teacherLogoutBtn: document.querySelector("#teacherLogoutBtn"),
-  teacherAuthStatus: document.querySelector("#teacherAuthStatus"),
   teacherRoom: document.querySelector("#teacherRoom"),
   teacherRoomCode: document.querySelector("#teacherRoomCode"),
   studentCount: document.querySelector("#studentCount"),
@@ -157,14 +152,10 @@ const state = {
 localStorage.setItem("factor-v3-student-id", state.studentId);
 
 // 明確初始化，避免舊表單還原或空白偏好覆蓋內建值。
-els.teacherGmail.value = "guest@gmail.com";
 els.teacherCode.value = "5188";
-els.teacherPasscode.type = "text";
-els.teacherPasscode.value = "1234";
 
-// 僅記住老師帳號及班級代碼；不儲存通行碼或視為已驗證。
+// 個人開課頁只記住班級代碼。
 for (const [input, key] of [
-  [els.teacherGmail, "factor-v3-teacher-gmail"],
   [els.teacherCode, "factor-v3-teacher-code"]
 ]) {
   try {
@@ -462,18 +453,7 @@ function isStudentOnline(student) {
 }
 
 function updateTeacherAccessUi() {
-
-  const displayRole = state.accessReady
-    ? state.teacherEmail === SUPER_ADMIN_EMAIL ? "admin" : state.teacherRole : "guest";
-  els.teacherAuthStatus.dataset.role = displayRole;
-  els.teacherAuthStatus.textContent = { admin: "admin｜最高", auth: "auth｜優先", guest: "guest｜一般" }[displayRole] || "尚未驗證";
-  els.teacherLoginBtn.textContent = els.teacherLoginBtn.dataset.busy ? "驗證中…" : "驗證優先權";
   els.openClassBtn.disabled = Boolean(els.openClassBtn.dataset.busy);
-  els.teacherAccessNote.textContent = state.teacherVerificationError || (!state.accessReady
-    ? "只輸入班級代碼即可用 guest 開課；驗證 Gmail 與通行碼可取得優先權。"
-    : !state.teacherRegistered ? "未列入老師名單，請聯絡 admin 新增。"
-    : displayRole === "admin" ? "admin 帳號｜可優先開課；管理名單請至後台登入。"
-    : state.teacherHasPriority ? "auth｜admin 已設定為優先使用，可開啟教室。" : "guest｜一般優先權，可開啟教室。");
 }
 
 function resetTeacherVerification() {
@@ -486,40 +466,6 @@ function resetTeacherVerification() {
   state.teacherToken = "";
   state.teacherExpiresAt = 0;
   updateTeacherAccessUi();
-}
-
-async function verifyTeacher({ email, passcode }) {
-  if (!/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(email) || !/^[0-9]{4}$/.test(passcode)) {
-    throw new Error("請輸入有效的 Gmail 與 4 位數字通行碼。");
-  }
-  await auth.authStateReady();
-  if (!auth.currentUser) await signInAnonymously(auth);
-  const uid = auth.currentUser.uid;
-  await deleteDoc(doc(db, "teacherSessions", uid));
-  const attemptRef = doc(db, "teacherAttempts", email);
-  const attempt = { uid, passcode, attemptedAt: serverTimestamp() };
-  try {
-    await updateDoc(attemptRef, { ...attempt, count: increment(1) });
-  } catch (error) {
-    if (!["permission-denied", "not-found"].includes(error.code)) throw error;
-    try {
-      await setDoc(attemptRef, { ...attempt, count: 1, windowStartedAt: serverTimestamp() });
-    } catch (resetError) {
-      if (resetError.code !== "permission-denied") throw resetError;
-      throw new Error("驗證過於頻繁，請稍候重試；每個帳號 15 分鐘最多驗證 5 次。");
-    }
-  }
-  const roles = email === SUPER_ADMIN_EMAIL ? ["admin"] : ["auth", "guest"];
-  for (const role of roles) {
-    try {
-      await setDoc(doc(db, "teacherSessions", uid), { email, passcode, role, verifiedAt: serverTimestamp() });
-      return { data: { email, role, hasPriority: role !== "guest", registered: true,
-        expiresAt: Date.now() + 8 * 60 * 60_000 } };
-    } catch (error) {
-      if (error.code !== "permission-denied") throw error;
-    }
-  }
-  throw new Error("Gmail 或通行碼錯誤，或 admin 尚未設定通行碼。");
 }
 
 async function saveTeacher({ email, role, passcode = "", remove = false }) {
@@ -539,31 +485,16 @@ async function saveTeacher({ email, role, passcode = "", remove = false }) {
     passcode: value, updatedAt: serverTimestamp(), updatedBy: auth.currentUser.uid });
 }
 
-async function refreshTeacherAccess() {
-  const revision = state.identityRevision;
-  const email = normalizeEmail(els.teacherGmail.value);
-  const { data: access } = await verifyTeacher({ email, passcode: els.teacherPasscode.value });
-  if (revision !== state.identityRevision) return;
-  state.teacherEmail = access.email;
-  state.teacherRole = access.role;
-  state.teacherHasPriority = access.hasPriority;
-  state.teacherRegistered = access.registered;
-  state.teacherToken = auth.currentUser.uid;
-  state.teacherExpiresAt = access.expiresAt;
-  state.accessReady = true;
-  els.teacherPasscode.value = "";
-  updateTeacherAccessUi();
-}
-
 async function ensureTeacherCanOpenClassroom() {
-  if (!state.accessReady || state.teacherEmail !== normalizeEmail(els.teacherGmail.value)
-      || Date.now() >= state.teacherExpiresAt) {
+  await auth.authStateReady();
+  if (!state.accessReady || state.teacherToken !== auth.currentUser?.uid || Date.now() >= state.teacherExpiresAt) {
     resetTeacherVerification();
     if (!auth.currentUser) await signInAnonymously(auth);
     const email = auth.currentUser.uid + "@guest.invalid";
     await setDoc(doc(db, "teacherSessions", auth.currentUser.uid), {
       email, role: "guest", passcode: "", verifiedAt: serverTimestamp()
     });
+    state.teacherToken = auth.currentUser.uid;
     state.teacherEmail = email;
     state.teacherRole = "guest";
     state.teacherHasPriority = false;
@@ -1088,7 +1019,7 @@ function getGoogleLoginErrorMessage(error) {
 
 async function startGoogleLogin(source) {
   const provider = new GoogleAuthProvider();
-  const email = source === "admin" ? SUPER_ADMIN_EMAIL : normalizeEmail(els.teacherGmail.value || "");
+  const email = SUPER_ADMIN_EMAIL;
   provider.setCustomParameters({ prompt: "select_account", ...(email ? { login_hint: email } : {}) });
   // Popup avoids cross-site redirect state being lost on GitHub Pages.
   sessionStorage.removeItem("factor-login-source");
@@ -1287,27 +1218,6 @@ document.querySelectorAll("[data-clear]").forEach((button) => {
 });
 
 els.nextNumberBtn.addEventListener("click", nextNumber);
-
-els.teacherGmail.addEventListener("input", resetTeacherVerification);
-els.teacherPasscode.addEventListener("input", resetTeacherVerification);
-
-els.teacherIdentityForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (els.teacherLoginBtn.dataset.busy) return;
-  setButtonBusy(els.teacherLoginBtn, true, "驗證中…");
-  resetTeacherVerification();
-  const revision = state.identityRevision;
-  try {
-    await refreshTeacherAccess();
-  } catch (error) {
-    if (revision !== state.identityRevision) return;
-    state.teacherRole = "guest";
-    state.teacherVerificationError = `guest｜驗證未通過，無法取得優先等級。${databaseError(error)}`;
-    updateTeacherAccessUi();
-  } finally {
-    setButtonBusy(els.teacherLoginBtn, false, "驗證優先權");
-  }
-});
 
 els.teacherLogoutBtn.addEventListener("click", async () => {
   await signOut(auth).catch(showAdminError);
