@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數挑戰｜第三版全班同步比賽</title>
-  <link rel="stylesheet" href="./styles.css?v=20260917-modes">
+  <link rel="stylesheet" href="./styles.css?v=20260917-mode-position">
 </head>
 <body>
   <div class="app">
@@ -32,6 +32,13 @@
           <button class="tab" id="soundToggle" type="button" aria-pressed="true">🔊 音效開</button>
           <label for="soundVolume">音量 <input id="soundVolume" type="range" min="0" max="100" value="35"></label>
         </div>
+            <label class="classroom-mode-control">教室模式
+              <select id="classroomDifficulty" form="teacherForm">
+                <option value="beginner">初級｜基礎因數</option>
+                <option value="intermediate">中級｜進階練習</option>
+                <option value="advanced">高級｜挑戰題</option>
+              </select>
+            </label>
       </nav>
     </header>
 
@@ -57,13 +64,7 @@
             <button type="submit" id="teacherLoginBtn" class="numbered-action" data-step="3" aria-label="步驟 3：驗證優先權">驗證優先權</button>
           </form>
           <form class="join-form" id="teacherForm">
-            <label>教室模式
-              <select id="classroomDifficulty">
-                <option value="beginner">初級｜基礎因數</option>
-                <option value="intermediate">中級｜進階練習</option>
-                <option value="advanced">高級｜挑戰題</option>
-              </select>
-            </label>
+
             <label>
               <span class="step-label">班級代碼 <span class="step-number" aria-hidden="true">4</span></span>
               <input id="teacherCode" value="5188" maxlength="12" placeholder="例如 MATH24" required>

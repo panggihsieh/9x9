@@ -833,6 +833,16 @@ body[data-view="student"] .logo span { font-size: 19px; }
   }
 }
 .sound-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.tabs { align-items: center; }
+.classroom-mode-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+body[data-view="student"] .classroom-mode-control,
+body[data-view="admin"] .classroom-mode-control { display: none; }
 .sound-controls label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .sound-controls input[type="range"] { min-width: 0; width: 100px; min-height: 44px; padding: 0; accent-color: #ffd15d; }
 button[data-busy="true"] { cursor: wait; opacity: .85; }
