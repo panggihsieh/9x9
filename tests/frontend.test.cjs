@@ -14,12 +14,18 @@ function setup(fail=false){
  vm.runInContext(source.slice(source.indexOf('async function ensureTeacherCanOpenClassroom()'),source.indexOf('async function ensureStudentCanJoinClassroom(')),context);
  return {state,auth,writes,open:()=>context.ensureTeacherCanOpenClassroom()};
 }
-test('personal classroom signs in anonymously without credential database writes',async()=>{
- const app=setup();await app.open();
+test('unauthorized teacher cannot open a classroom',async()=>{
+ const app=setup(); await assert.rejects(app.open(), /授權密碼/); assert.equal(app.writes.length,0);
+});
+
+test('authorized teacher uses existing identity',async()=>{
+ const app=setup(); app.auth.currentUser={uid:"anonymous-test"}; app.state.teacherAuthorizedUid="anonymous-test"; app.state.teacherAuthorizedUntil=Date.now()+60000; await app.open();
  assert.equal(app.state.teacherRole,'guest');assert.equal(app.state.teacherEmail,'anonymous-test@guest.invalid');
  assert.equal(app.writes.length,0);
 });
-test('existing identity is reused without session database writes',async()=>{
- const app=setup();await app.open();app.auth.currentUser={uid:'another'};await app.open();
- assert.equal(app.state.teacherEmail,'another@guest.invalid');assert.equal(app.writes.length,0);
+test('changing identity invalidates authorization',async()=>{
+ const app=setup();app.state.teacherAuthorizedUid='old';app.state.teacherAuthorizedUntil=Date.now()+60000;app.auth.currentUser={uid:'another'};await assert.rejects(app.open(), /授權密碼/);
+ assert.equal(app.writes.length,0);
 });
+
+test('expired authorization cannot open',async()=>{const app=setup();app.auth.currentUser={uid:'old'};app.state.teacherAuthorizedUid='old';app.state.teacherAuthorizedUntil=Date.now()-1;await assert.rejects(app.open(), /授權密碼/);});

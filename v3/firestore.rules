@@ -7,11 +7,48 @@ service cloud.firestore {
         && request.auth.token.firebase.sign_in_provider == 'google.com'
         && request.auth.token.email == 'teacher.hsieh@gmail.com';
     }
+    function teacherAuthorized() {
+      let session = get(/databases/$(database)/documents/teacherAuthorizationSessions/$(request.auth.uid)).data;
+      let code = get(/databases/$(database)/documents/teacherAuthorizationCodes/$(session.code)).data;
+      return code.enabled == true && session.authorizedAt >= code.updatedAt
+        && session.authorizedAt + duration.value(8, 'h') > request.time;
+    }
+    match /teacherAuthorizationCodes/{code} {
+      allow read: if isSuperAdmin();
+      allow create, update: if isSuperAdmin() && code.matches('^[0-9]{4}$')
+        && request.resource.data.keys().hasOnly(['label', 'enabled', 'updatedAt'])
+        && request.resource.data.label is string && request.resource.data.label.size() <= 80
+        && request.resource.data.enabled is bool && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+    match /teacherAuthorizationAttempts/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['code', 'attemptedAt'])
+        && request.resource.data.code.matches('^[0-9]{4}$')
+        && request.resource.data.attemptedAt == request.time
+        && (resource == null || resource.data.attemptedAt + duration.value(5, 's') <= request.time);
+      allow delete: if false;
+    }
+    match /teacherAuthorizationSessions/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      function validAuthorization() {
+        let d = request.resource.data;
+        let attempt = get(/databases/$(database)/documents/teacherAuthorizationAttempts/$(uid)).data;
+        let code = get(/databases/$(database)/documents/teacherAuthorizationCodes/$(d.code)).data;
+        return d.keys().hasOnly(['code', 'authorizedAt']) && d.code.matches('^[0-9]{4}$')
+          && d.authorizedAt == request.time && code.enabled == true
+          && attempt.code == d.code && attempt.attemptedAt + duration.value(30, 's') > request.time;
+      }
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && (request.resource.data == {'revoked': true} || validAuthorization());
+      allow delete: if false;
+    }
     function ownsRoom(room) {
       return signedIn() && (room.teacherUid == request.auth.uid || isSuperAdmin());
     }
     function teacherFields(data) {
-      return signedIn() && data.teacherUid == request.auth.uid
+      return signedIn() && teacherAuthorized() && data.teacherUid == request.auth.uid
         && data.teacherEmail == request.auth.uid + '@guest.invalid'
         && data.teacherRole == 'guest' && data.teacherHasPriority == false
         && data.maxStudents == 100;
@@ -68,7 +105,7 @@ service cloud.firestore {
       }
       function maintain() {
         let changed = request.resource.data.diff(resource.data).affectedKeys();
-        return roomOpen(resource.data) && ownsRoom(resource.data)
+        return roomOpen(resource.data) && ownsRoom(resource.data) && teacherAuthorized()
           && request.resource.data.teacherUid == request.auth.uid
           && changed.hasOnly(['teacherUid', 'teacherLastSeenAt', 'updatedAt', 'status', 'startedAt', 'durationMinutes'])
           && (!changed.hasAny(['durationMinutes']) || request.resource.data.durationMinutes in [2, 3, 5, 10])

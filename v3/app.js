@@ -91,6 +91,8 @@ const els = {
 };
 
 const state = {
+  teacherAuthorizedUid: "",
+  teacherAuthorizedUntil: 0,
   teacherCode: "",
   studentCode: "",
   studentId: localStorage.getItem("factor-v3-student-id") || crypto.randomUUID(),
@@ -429,12 +431,13 @@ function isStudentOnline(student) {
 }
 
 function updateTeacherAccessUi() {
-  els.openClassBtn.disabled = Boolean(els.openClassBtn.dataset.busy);
+  els.openClassBtn.disabled = Boolean(els.openClassBtn.dataset.busy) || !auth.currentUser || state.teacherAuthorizedUid !== auth.currentUser.uid || Date.now() >= state.teacherAuthorizedUntil;
 }
 
 async function ensureTeacherCanOpenClassroom() {
   await auth.authStateReady();
   if (!auth.currentUser) await signInAnonymously(auth);
+  if (state.teacherAuthorizedUid !== auth.currentUser.uid || Date.now() >= state.teacherAuthorizedUntil) throw new Error("請先輸入後台核發的四碼授權密碼並登入。");
   state.teacherEmail = auth.currentUser.uid + "@guest.invalid";
   state.teacherRole = "guest";
   state.teacherHasPriority = false;
@@ -926,7 +929,7 @@ function escapeHtml(value) {
 
 function showAdminAccess(access) {
   els.adminPanel.classList.toggle("hidden", access.role !== "admin");
-  els.adminStatus.textContent = access.role === "admin" ? "已登入，可釋放班級代碼。" : "請使用管理員 Google 帳號登入。";
+  els.adminStatus.textContent = access.role === "admin" ? "已登入，可管理授權密碼及釋放班級代碼。" : "請使用管理員 Google 帳號登入。";
   els.superAdminTools.classList.toggle("hidden", access.role !== "admin");
 }
 
@@ -957,6 +960,7 @@ async function startGoogleLogin(source) {
 
 function stopAccessSubscriptions() {
   els.adminClassroomList.replaceChildren();
+  document.querySelector("#teacherPasswordList").replaceChildren();
   els.superAdminTools.classList.add("hidden");
 }
 
@@ -966,13 +970,15 @@ function handleAdminAuth(user) {
     stopAccessSubscriptions();
     state.adminClassroomsLoaded = false;
   }
+  if (state.teacherAuthorizedUid !== user?.uid) { state.teacherAuthorizedUid = ""; state.teacherAuthorizedUntil = 0; }
+  updateTeacherAccessUi();
   state.authUser = user;
   state.adminAccess = access.role === "admin";
   showAdminAccess(access);
   els.adminLoginBtn.classList.toggle("hidden", state.adminAccess);
   els.teacherLogoutBtn.classList.toggle("hidden", !state.adminAccess);
   if (!state.adminAccess || !canUseDatabase()) return;
-  if (!state.adminClassroomsLoaded) { state.adminClassroomsLoaded = true; loadAdminClassrooms(); }
+  if (!state.adminClassroomsLoaded) { state.adminClassroomsLoaded = true; loadAdminClassrooms(); loadTeacherPasswords(); }
 
 }
 
@@ -1013,10 +1019,14 @@ els.teacherForm.addEventListener("submit", async (event) => {
     subscribeTeacher(code);
     startTeacherHeartbeat(code);
   } catch (error) {
+    if (error.code === 'permission-denied') {
+      state.teacherAuthorizedUid = ''; state.teacherAuthorizedUntil = 0;
+      document.querySelector('#teacherAuthorizationStatus').textContent = '授權已失效或密碼已更新，請重新驗證。';
+    }
     els.teacherAccessNote.textContent = databaseError(error);
   } finally {
     setButtonBusy(els.openClassBtn, false, "開啟教室");
-    els.openClassBtn.disabled = Boolean(els.openClassBtn.dataset.busy);
+    updateTeacherAccessUi();
   }
 });
 
@@ -1149,3 +1159,103 @@ document.querySelector('#refreshRankingBtn').addEventListener('click', async eve
   } catch (error) { els.teacherAccessNote.textContent = databaseError(error); }
   finally { button.disabled = false; }
 });
+
+// Authorization codes and grants are private; Firestore verifies every opening.
+const teacherAuthorizationForm = document.querySelector('#teacherAuthorizationForm');
+const teacherAuthorizationPin = document.querySelector('#teacherAuthorizationPin');
+const teacherAuthorizationStatus = document.querySelector('#teacherAuthorizationStatus');
+teacherAuthorizationPin.addEventListener('input', () => {
+  state.teacherAuthorizedUid = ''; state.teacherAuthorizedUntil = 0;
+  updateTeacherAccessUi();
+  teacherAuthorizationStatus.textContent = '請驗證後再開啟教室。';
+});
+teacherAuthorizationForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = document.querySelector('#teacherAuthorizeBtn');
+  if (button.disabled) return;
+  const code = teacherAuthorizationPin.value.trim();
+  state.teacherAuthorizedUid = ''; state.teacherAuthorizedUntil = 0;
+  updateTeacherAccessUi();
+  if (!/^[0-9]{4}$/.test(code)) { teacherAuthorizationStatus.textContent = '請輸入四碼數字。'; return; }
+  button.disabled = true;
+  teacherAuthorizationPin.disabled = true;
+  document.querySelector('#teacherAuthorizationLogout').disabled = true;
+  try {
+    await auth.authStateReady();
+    if (!auth.currentUser) await signInAnonymously(auth);
+    const uid = auth.currentUser.uid;
+    await setDoc(doc(db, 'teacherAuthorizationSessions', uid), { revoked: true });
+    await setDoc(doc(db, 'teacherAuthorizationAttempts', uid), { code, attemptedAt: serverTimestamp() });
+    await setDoc(doc(db, 'teacherAuthorizationSessions', uid), { code, authorizedAt: serverTimestamp() });
+    if (auth.currentUser?.uid !== uid) throw new Error('登入身分已改變，請重試。');
+    state.teacherAuthorizedUid = uid;
+    state.teacherAuthorizedUntil = Date.now() + 8 * 60 * 60 * 1000;
+    teacherAuthorizationPin.value = '';
+    teacherAuthorizationStatus.textContent = '授權成功，可以開啟教室（本次登入有效 8 小時）。';
+  } catch (error) {
+    teacherAuthorizationStatus.textContent = error.code === 'permission-denied'
+      ? '密碼無效、已停用或驗證太頻繁，請稍候 5 秒再試。' : databaseError(error);
+  } finally {
+    button.disabled = false; teacherAuthorizationPin.disabled = false;
+    document.querySelector('#teacherAuthorizationLogout').disabled = false;
+    updateTeacherAccessUi();
+  }
+});
+document.querySelector('#teacherAuthorizationLogout').addEventListener('click', async () => {
+  state.teacherAuthorizedUid = ''; state.teacherAuthorizedUntil = 0;
+  teacherAuthorizationStatus.textContent = '已登出授權，重新開課前請再次驗證。';
+  updateTeacherAccessUi();
+  if (auth.currentUser) await setDoc(doc(db, 'teacherAuthorizationSessions', auth.currentUser.uid), { revoked: true }).catch(error => {
+    teacherAuthorizationStatus.textContent = databaseError(error);
+  });
+});
+setInterval(updateTeacherAccessUi, 30000);
+
+async function loadTeacherPasswords() {
+  if (!state.adminAccess) return;
+  const list = document.querySelector('#teacherPasswordList');
+  try {
+    const snapshot = await getDocs(collection(db, 'teacherAuthorizationCodes'));
+    if (!state.adminAccess) return;
+    list.replaceChildren();
+    for (const item of snapshot.docs.sort((a,b) => a.id.localeCompare(b.id))) {
+      const data = item.data();
+      const row = document.createElement('div'); row.className = 'authorization-code-row';
+      const title = document.createElement('strong');
+      title.textContent = `${item.id} · ${data.label || '未填備註'} · ${data.enabled ? '啟用' : '停用'}`;
+      const edit = document.createElement('button'); edit.type = 'button'; edit.textContent = '編輯';
+      edit.addEventListener('click', () => {
+        document.querySelector('#adminAuthorizationCode').value = item.id;
+        document.querySelector('#adminAuthorizationLabel').value = data.label || '';
+        document.querySelector('#adminAuthorizationEnabled').checked = data.enabled;
+      });
+      const toggle = document.createElement('button'); toggle.type = 'button'; toggle.textContent = data.enabled ? '停用' : '啟用';
+      toggle.addEventListener('click', async () => {
+        toggle.disabled = true;
+        try {
+          await setDoc(doc(db, 'teacherAuthorizationCodes', item.id), { ...data, enabled: !data.enabled, updatedAt: serverTimestamp() });
+          await loadTeacherPasswords();
+        } catch (error) { document.querySelector('#authorizationAdminStatus').textContent = databaseError(error); toggle.disabled = false; }
+      });
+      row.append(title, edit, toggle); list.append(row);
+    }
+    if (snapshot.empty) list.textContent = '尚未核發授權密碼，請先新增一組。';
+  } catch (error) { document.querySelector('#authorizationAdminStatus').textContent = databaseError(error); }
+}
+document.querySelector('#authorizationAdminForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!state.adminAccess) return;
+  const code = document.querySelector('#adminAuthorizationCode').value.trim();
+  if (!/^[0-9]{4}$/.test(code)) return;
+  const button = document.querySelector('#saveAuthorizationCode'); button.disabled = true;
+  try {
+    await setDoc(doc(db, 'teacherAuthorizationCodes', code), {
+      label: document.querySelector('#adminAuthorizationLabel').value.trim(),
+      enabled: document.querySelector('#adminAuthorizationEnabled').checked, updatedAt: serverTimestamp()
+    });
+    document.querySelector('#authorizationAdminStatus').textContent = '已儲存。修改後，使用此密碼的老師需重新驗證才能再次開課。';
+    await loadTeacherPasswords();
+  } catch (error) { document.querySelector('#authorizationAdminStatus').textContent = databaseError(error); }
+  finally { button.disabled = false; }
+});
+document.querySelector('#refreshAuthorizationCodes').addEventListener('click', loadTeacherPasswords);

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數挑戰｜第三版全班同步比賽</title>
-  <link rel="stylesheet" href="./styles.css?v=20260917-quota-warning">
+  <link rel="stylesheet" href="./styles.css?v=20260922-teacher-authorization">
 </head>
 <body>
   <div class="app">
@@ -56,6 +56,14 @@
 
     <main>
       <section class="view active" id="teacherView">
+        <form id="teacherAuthorizationForm" class="panel authorization-form">
+          <label>老師授權密碼
+            <input id="teacherAuthorizationPin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" minlength="4" autocomplete="off" placeholder="後台核發的四碼數字" required>
+          </label>
+          <button id="teacherAuthorizeBtn" type="submit">授權登入</button>
+          <button id="teacherAuthorizationLogout" type="button">登出授權</button>
+          <p id="teacherAuthorizationStatus" role="status">請先輸入後台核發的四碼數字，驗證成功後才能開啟教室。</p>
+        </form>
         <p id="teacherAccessNote" role="status" aria-live="polite"></p>
 
         <section class="panel classroom-panel hidden" id="teacherRoom">
@@ -187,6 +195,16 @@
         <p id="adminStatus" role="status">僅限 admin 登入</p>
         <section class="panel hidden" id="adminPanel">
           <section class="admin-tools hidden" id="superAdminTools">
+            <h3>老師授權密碼管理</h3>
+            <form id="authorizationAdminForm" class="authorization-form">
+              <label>四碼授權密碼<input id="adminAuthorizationCode" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" minlength="4" autocomplete="off" required></label>
+              <label>備註<input id="adminAuthorizationLabel" maxlength="80" placeholder="例如：六年級教師"></label>
+              <label><input id="adminAuthorizationEnabled" type="checkbox" checked>啟用</label>
+              <button id="saveAuthorizationCode" type="submit">新增／儲存授權密碼</button>
+              <button id="refreshAuthorizationCodes" type="button">重新整理密碼</button>
+            </form>
+            <p id="authorizationAdminStatus" role="status">可維護多組密碼（可含開頭的 0）；停用或修改後，老師需重新驗證才能開課。</p>
+            <div id="teacherPasswordList"></div>
             <div class="room-head classroom-management-heading">
               <h3>班級代碼管理</h3>
               <div class="room-actions">
@@ -216,6 +234,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?personal=3&v=20260917-quota-warning"></script>
+  <script type="module" src="./app.js?personal=3&v=20260922-teacher-authorization"></script>
 </body>
 </html>

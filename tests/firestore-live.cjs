@@ -14,7 +14,7 @@ const base = endpoint + '/v1/projects/' + project + '/databases/(default)/docume
 const prefix = 'projects/' + project + '/databases/(default)/documents/';
 const email = 'codex-pin-test-' + randomUUID() + '@example.invalid';
 const code = 'T' + randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
-let adminToken, idToken, uid, checks = 0;
+let adminToken, idToken, uid, authorizationCode, checks = 0;
 function fields(data) {
   return Object.fromEntries(Object.entries(data).map(([key, value]) => [key,
     value instanceof Date ? { timestampValue: value.toISOString() } : typeof value === 'string' ? { stringValue: value } : typeof value === 'boolean' ? { booleanValue: value } : typeof value === 'object' ? { mapValue: { fields: fields(value) } } : { integerValue: String(value) }]));
@@ -44,7 +44,32 @@ function expect(result, status, label) {
     expect(await request(base + '/admins/' + email, 'GET', null, idToken), 403, 'retired credential collection denies read');
     expect(await write('teacherSessions/' + uid, {role:'admin'}),403,'retired verification route denies writes');
     const room = { code, sessionId: 'live-test', teacherUid: uid, teacherEmail: uid + '@guest.invalid', teacherRole: 'guest', teacherHasPriority: false, maxStudents: 100, studentCount: 0, status: 'waiting' };
+    expect(await write('classrooms/' + code, room, ['createdAt', 'updatedAt', 'teacherLastSeenAt', 'lastStudentSeenAt']), 403, 'unverified teacher cannot create classroom');
+    for (let tries=0; tries<100; tries++) {
+      const candidate=String(Math.floor(Math.random()*10000)).padStart(4,'0');
+      const created=await request(base+'/teacherAuthorizationCodes?documentId='+candidate,'POST',{fields:fields({label:'isolated authorization test',enabled:true,updatedAt:new Date()})},adminToken);
+      if(created.status===200){authorizationCode=candidate;break;}
+      if(created.status!==409) throw new Error('Cannot create authorization fixture: '+created.status);
+    }
+    assert.ok(authorizationCode);
+    expect(await request(base+'/teacherAuthorizationCodes/'+authorizationCode,'GET',null,idToken),403,'teacher cannot read password documents');
+    expect(await request(base+'/teacherAuthorizationCodes','GET',null,idToken),403,'teacher cannot list passwords');
+    expect(await write('teacherAuthorizationCodes/'+authorizationCode,{enabled:true}),403,'teacher cannot issue passwords');
+    expect(await write('teacherAuthorizationSessions/'+uid,{code:authorizationCode},['authorizedAt']),403,'authorization requires an attempt');
+    expect(await write('teacherAuthorizationAttempts/'+uid,{code:authorizationCode},['attemptedAt']),200,'record password attempt');
+    expect(await write('teacherAuthorizationAttempts/'+uid,{code:authorizationCode},['attemptedAt']),403,'server enforces attempt cooldown');
+    const wrongCode=authorizationCode==='0000'?'0001':'0000';
+    expect(await write('teacherAuthorizationSessions/'+uid,{code:wrongCode},['authorizedAt']),403,'different guess cannot reuse attempt');
+    expect(await write('teacherAuthorizationSessions/'+uid,{code:authorizationCode},['authorizedAt']),200,'valid code authorizes teacher');
+    expect(await write('teacherAuthorizationSessions/other-user',{code:authorizationCode},['authorizedAt']),403,'cannot authorize another user');
     expect(await write('classrooms/' + code, room, ['createdAt', 'updatedAt', 'teacherLastSeenAt', 'lastStudentSeenAt']), 200, 'verified teacher can create classroom');
+    await write('teacherAuthorizationCodes/'+authorizationCode,{enabled:false},[],adminToken,true);
+    expect(await write('classrooms/'+code,{status:'active'},['updatedAt'],idToken,true),403,'disabled code blocks class start');
+    await write('teacherAuthorizationCodes/'+authorizationCode,{enabled:true},[],adminToken,true);
+    await write('teacherAuthorizationSessions/'+uid,{authorizedAt:new Date(Date.now()-9*60*60*1000)},[],adminToken,true);
+    expect(await write('classrooms/'+code,{status:'active'},['updatedAt'],idToken,true),403,'expired session blocks class start');
+    expect(await write('teacherAuthorizationSessions/'+uid,{code:authorizationCode},['authorizedAt']),200,'valid code can reauthorize');
+
     expect(await write('classrooms/' + code, { ...room, teacherRole: 'admin' }, ['updatedAt']), 403, 'cannot forge classroom priority');
     expect(await write('classrooms/' + code, { durationMinutes: 4 }, ['updatedAt'], idToken, true), 403, 'reject unsupported duration');
     for (const durationMinutes of [2, 3, 5, 10]) expect(await write('classrooms/' + code, { durationMinutes }, ['updatedAt'], idToken, true), 200, 'allow duration ' + durationMinutes);
@@ -121,7 +146,7 @@ function expect(result, status, label) {
     expect(await takeover(), 200, 'admin-released legacy code can be reused');
     const guestEmail = uid + '@guest.invalid';
     const guestRoom = { ...room, code: code + 'G', teacherEmail: guestEmail, teacherRole: 'guest', teacherHasPriority: false };
-    expect(await write('classrooms/' + code + 'G', guestRoom, ['createdAt', 'updatedAt', 'teacherLastSeenAt', 'lastStudentSeenAt']), 200, 'guest creates classroom with code only');
+    expect(await write('classrooms/' + code + 'G', guestRoom, ['createdAt', 'updatedAt', 'teacherLastSeenAt', 'lastStudentSeenAt']), 200, 'authorized guest creates classroom');
     expect(await write('classrooms/' + code + 'G', { status: 'active' }, ['updatedAt'], idToken, true), 200, 'guest starts own classroom');
     expect(await write('classrooms/' + code + 'G', { teacherHasPriority: true }, ['updatedAt'], idToken, true), 403, 'guest cannot elevate priority');
     if (emulator) {
@@ -178,7 +203,7 @@ function expect(result, status, label) {
       const docs = await request(base + '/classrooms/' + code + '/' + collection, 'GET', null, adminToken);
       for (const doc of docs.data.documents || []) await request(endpoint + '/v1/' + doc.name, 'DELETE', null, adminToken);
     }
-    for (const path of ['admins/' + email, 'teacherAttempts/' + email, ...(uid ? ['teacherSessions/' + uid] : []), 'classrooms/' + code, 'classrooms/' + code + 'G']) {
+    for (const path of [...(authorizationCode ? ['teacherAuthorizationCodes/'+authorizationCode] : []), 'admins/' + email, 'teacherAttempts/' + email, ...(uid ? ['teacherSessions/' + uid, 'teacherAuthorizationSessions/'+uid, 'teacherAuthorizationAttempts/'+uid] : []), 'classrooms/' + code, 'classrooms/' + code + 'G']) {
       const result = await request(base + '/' + path, 'DELETE', null, adminToken);
       if (![200, 404].includes(result.status)) throw new Error('Test cleanup failed: ' + path);
     }
