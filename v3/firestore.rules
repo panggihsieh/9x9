@@ -11,7 +11,7 @@ service cloud.firestore {
       let session = get(/databases/$(database)/documents/teacherAuthorizationSessions/$(request.auth.uid)).data;
       let code = get(/databases/$(database)/documents/teacherAuthorizationCodes/$(session.code)).data;
       return code.enabled == true && session.authorizedAt >= code.updatedAt
-        && session.authorizedAt + duration.value(8, 'h') > request.time;
+        && session.authorizedAt + duration.value(1, 'h') > request.time;
     }
     match /teacherAuthorizationCodes/{code} {
       allow read: if isSuperAdmin();

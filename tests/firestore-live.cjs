@@ -66,7 +66,7 @@ function expect(result, status, label) {
     await write('teacherAuthorizationCodes/'+authorizationCode,{enabled:false},[],adminToken,true);
     expect(await write('classrooms/'+code,{status:'active'},['updatedAt'],idToken,true),403,'disabled code blocks class start');
     await write('teacherAuthorizationCodes/'+authorizationCode,{enabled:true},[],adminToken,true);
-    await write('teacherAuthorizationSessions/'+uid,{authorizedAt:new Date(Date.now()-9*60*60*1000)},[],adminToken,true);
+    await write('teacherAuthorizationSessions/'+uid,{authorizedAt:new Date(Date.now()-2*60*60*1000)},[],adminToken,true);
     expect(await write('classrooms/'+code,{status:'active'},['updatedAt'],idToken,true),403,'expired session blocks class start');
     expect(await write('teacherAuthorizationSessions/'+uid,{code:authorizationCode},['authorizedAt']),200,'valid code can reauthorize');
 

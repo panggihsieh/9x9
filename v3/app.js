@@ -1199,9 +1199,9 @@ teacherAuthorizationForm.addEventListener('submit', async event => {
     await setDoc(doc(db, 'teacherAuthorizationSessions', uid), { code, authorizedAt: serverTimestamp() });
     if (auth.currentUser?.uid !== uid) throw new Error('登入身分已改變，請重試。');
     state.teacherAuthorizedUid = uid;
-    state.teacherAuthorizedUntil = Date.now() + 8 * 60 * 60 * 1000;
+    state.teacherAuthorizedUntil = Date.now() + 60 * 60 * 1000;
     teacherAuthorizationPin.value = '';
-    teacherAuthorizationStatus.textContent = '授權成功，可以開啟教室（本次登入有效 8 小時）。';
+    teacherAuthorizationStatus.textContent = '授權成功，可以開啟教室（本次登入有效 1 小時）。';
   } catch (error) {
     teacherAuthorizationStatus.textContent = error.code === 'permission-denied'
       ? '密碼無效、已停用或驗證太頻繁，請稍候 5 秒再試。' : databaseError(error);
