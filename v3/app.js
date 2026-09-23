@@ -2,6 +2,7 @@ import { mergePendingScore } from "./pending-score.mjs";
 import { playSound } from "./sound.js?v=20260917-tick-tock";
 import { classroomCountdown } from "./countdown.mjs";
 import { chooseClassroomNumber } from "./question-difficulty.mjs?v=20260917-modes";
+import { generateClassroomCode } from "./classroom-code.mjs";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
   GoogleAuthProvider,
@@ -133,21 +134,11 @@ const state = {
 
 localStorage.setItem("factor-v3-student-id", state.studentId);
 
-// 明確初始化，避免舊表單還原或空白偏好覆蓋內建值。
-els.teacherCode.value = "5188";
-
-// 個人開課頁只記住班級代碼。
-for (const [input, key] of [
-  [els.teacherCode, "factor-v3-teacher-code"]
-]) {
-  try {
-    const saved = localStorage.getItem(key);
-    if (saved?.trim()) input.value = saved.trim();
-  } catch { /* 瀏覽器禁止儲存時，仍可手動輸入。 */ }
-  input.addEventListener("input", () => {
-    try { localStorage.setItem(key, input.value.trim()); } catch {}
-  });
+function prepareNextClassroomCode() {
+  els.teacherCode.value = generateClassroomCode();
 }
+
+prepareNextClassroomCode();
 
 
 function normalizeCode(value) {
@@ -290,15 +281,11 @@ async function openClassroom(code) {
     const ref = classroomRef(code);
     const snapshot = await tx.get(ref);
     const room = snapshot.data();
-    if (room && room.teacherEmail === state.teacherEmail && roomIsOpen(room)) {
-      tx.update(ref, { teacherUid: auth.currentUser.uid, teacherLastSeenAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      return room.sessionId;
-    }
     const liveRoom = room ? await activityRoom(room, ref => tx.get(ref)) : null;
     if (room && !canReclaimRoom(liveRoom)) {
-      throw new Error(!room.teacherEmail
-        ? "這是舊版保留的班級代碼，請 admin 在後台釋放。"
-        : "此班級仍有老師或學生近期活動；雙方離線滿 5 分鐘後可重新使用，或請 admin 釋放。");
+      const error = new Error("隨機班級代碼已被使用，正在自動更換。");
+      error.code = "room-code-unavailable";
+      throw error;
     }
     if (room) tx.set(doc(db, "classrooms", code, "sessions", room.sessionId || "legacy"), room);
     const nextSessionId = crypto.randomUUID();
@@ -311,6 +298,22 @@ async function openClassroom(code) {
   });
   clearQuotaWarning();
   state.teacherSessionId = sessionId;
+}
+
+async function openRandomClassroom() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const code = attempt === 0 && /^[0-9]{4}$/.test(els.teacherCode.value)
+      ? els.teacherCode.value
+      : generateClassroomCode();
+    els.teacherCode.value = code;
+    try {
+      await openClassroom(code);
+      return code;
+    } catch (error) {
+      if (error.code !== "room-code-unavailable") throw error;
+    }
+  }
+  throw new Error("目前無法取得可用的四碼班級代碼，請稍後再試。");
 }
 
 async function updateCurrentRoom(code, sessionId, changes) {
@@ -346,6 +349,7 @@ function subscribeTeacher(code) {
 
   let countdownRoom;
   let finalTimer;
+  let nextCodePrepared = false;
   clearTimeout(state.teacherFinalTimer);
   let lastSecond;
   const updateCountdown = () => {
@@ -361,6 +365,10 @@ function subscribeTeacher(code) {
     }
     lastSecond = countdown?.seconds;
     if (countdown?.seconds === 0 && !finalTimer) {
+      if (!nextCodePrepared) {
+        prepareNextClassroomCode();
+        nextCodePrepared = true;
+      }
       // Allow one final student upload before freezing the top ten.
       finalTimer = state.teacherFinalTimer = setTimeout(() => {
         state.unsubTeacherStudents?.(); state.unsubTeacherRoom?.();
@@ -379,6 +387,7 @@ function subscribeTeacher(code) {
       els.classStatus.textContent = "班級已結束 · 排行榜已定格";
       els.startClassBtn.disabled = true;
       state.teacherCode = "";
+      prepareNextClassroomCode();
       els.teacherAccessNote.textContent = "此課堂已釋放或代碼已重新使用，請重新開課。";
       return;
     }
@@ -462,6 +471,9 @@ function renderTeacherDashboard(students) {
 }
 
 async function joinStudent(code, name) {
+  state.studentDifficulty = "";
+  document.querySelector('#studentDifficultyLabel').textContent = "教室模式：讀取中…";
+  document.querySelector('#studentTimeLeft').textContent = "重新檢查班級狀態…";
   await ensureStudentCanJoinClassroom(code);
   state.studentCode = code;
   state.studentName = name;
@@ -1001,14 +1013,12 @@ function setButtonBusy(button, busy, label) {
 els.teacherForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (els.openClassBtn.dataset.busy) return;
-  const code = normalizeCode(els.teacherCode.value);
-  if (!code) return;
   try {
     setButtonBusy(els.openClassBtn, true, "開啟中…");
     await ensureTeacherCanOpenClassroom();
     const previousCode = state.teacherCode;
     const previousSessionId = state.teacherSessionId;
-    await openClassroom(code);
+    const code = await openRandomClassroom();
     if (previousCode && previousCode !== code) await endClassroom(previousCode, previousSessionId);
     stopTeacherSubscription();
     state.teacherCode = code;
@@ -1055,6 +1065,7 @@ els.endClassBtn.addEventListener("click", async () => {
     els.startClassBtn.disabled = true;
     state.teacherCode = "";
     state.teacherSessionId = "";
+    prepareNextClassroomCode();
   } catch (error) { els.teacherAccessNote.textContent = databaseError(error); }
 });
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>全班因數挑戰｜第三版全班同步比賽</title>
-  <link rel="stylesheet" href="./styles.css?v=20260922-teacher-authorization">
+  <link rel="stylesheet" href="./styles.css?v=20260923-random-classroom-code">
 </head>
 <body>
   <div class="app">
@@ -46,7 +46,7 @@
           </label>
           <label class="classroom-code-control">
             <span class="step-label">班級代碼</span>
-            <input id="teacherCode" value="5188" maxlength="12" placeholder="例如 MATH24" required>
+            <input id="teacherCode" inputmode="numeric" aria-label="系統自動產生的四碼班級代碼" readonly>
           </label>
           <button type="submit" id="openClassBtn" aria-label="開啟教室" disabled>開啟教室</button>
           <small id="classroomModeHint" role="status">請先選擇模式，再開啟教室。</small>
@@ -234,6 +234,6 @@
     </div>
   </template>
 
-  <script type="module" src="./app.js?personal=3&v=20260922-teacher-authorization"></script>
+  <script type="module" src="./app.js?personal=3&v=20260923-random-classroom-code"></script>
 </body>
 </html>
