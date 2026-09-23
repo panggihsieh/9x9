@@ -2,7 +2,7 @@ import { mergePendingScore } from "./pending-score.mjs";
 import { playSound } from "./sound.js?v=20260917-tick-tock";
 import { classroomCountdown } from "./countdown.mjs";
 import { chooseClassroomNumber } from "./question-difficulty.mjs?v=20260917-modes";
-import { generateClassroomCode } from "./classroom-code.mjs";
+import { generateClassroomCode, generatedCodeIsAvailable } from "./classroom-code.mjs";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
   GoogleAuthProvider,
@@ -281,8 +281,7 @@ async function openClassroom(code) {
     const ref = classroomRef(code);
     const snapshot = await tx.get(ref);
     const room = snapshot.data();
-    const liveRoom = room ? await activityRoom(room, ref => tx.get(ref)) : null;
-    if (room && !canReclaimRoom(liveRoom)) {
+    if (!generatedCodeIsAvailable(room)) {
       const error = new Error("隨機班級代碼已被使用，正在自動更換。");
       error.code = "room-code-unavailable";
       throw error;
